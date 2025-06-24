@@ -1,0 +1,27 @@
+[project]
+name = "shellm"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "instructor>=1.8.3",
+    "ipykernel>=6.29.5",
+    "ipywidgets>=8.1.7",
+    "nest-asyncio>=1.6.0",
+    "openai-agents>=0.0.19",
+    "openai>=1.88.0",
+    "pytest>=8.4.1",
+    "weave>=0.51.54",
+    "logfire[asyncpg]>=3.21.1",
+    "pydantic-ai>=0.3.1",
+    "asyncpg>=0.30.0",
+    "uvicorn>=0.34.3",
+    "wikipedia>=1.4.0",
+    "fastapi>=0.115.13",
+    "markdownify>=1.1.0",
+    "beautifulsoup4>=4.13.4",
+    "e2b>=1.5.2",
+    "docker>=7.1.0",
+    "aiofiles>=24.1.0",
+]
