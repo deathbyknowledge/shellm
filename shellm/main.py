@@ -9,6 +9,7 @@ import argparse
 from task_curator import TaskCurator
 from teacher import Teacher
 from sandbox import Sandbox
+from judge import Judge
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -19,11 +20,13 @@ def generate_trajectory(task_id, task_description, setup_commands):
     print(f"Task: {task_description}")
     print(f"Setup commands: {setup_commands}")
 
-    teacher = Teacher()
+    teacher = Teacher(base_url=None, api_key=None, model="gpt-4.1-2025-04-14")
     sandbox = Sandbox(setup_commands=setup_commands)
+    judge = Judge()
     
     trajectory = []
     current_turn = 1
+    evaluation = None
     
     # Start the secure sandbox environment
     sandbox.start()
@@ -58,6 +61,10 @@ def generate_trajectory(task_id, task_description, setup_commands):
 
             current_turn += 1
 
+        print(f"--- Evaluating trajectory for Task ID: {task_id} ---")
+        evaluation = judge.evaluate_trajectory(task_description, setup_commands, trajectory)
+        print(f"Evaluation complete. Rating: {evaluation.rating}/5")
+
     finally:
         # Always ensure the sandbox is stopped and cleaned up
         sandbox.stop()
@@ -68,7 +75,11 @@ def generate_trajectory(task_id, task_description, setup_commands):
         "source": "synthetic_teacher_model_v1",
         "setup_commands": setup_commands,
         "task": task_description,
-        "trajectory": trajectory
+        "trajectory": trajectory,
+        "evaluation": {
+          "rating": evaluation.rating if evaluation else None,
+          "reasoning": evaluation.reasoning if evaluation else "Evaluation did not run."
+        }
     }
 
 # Thread-safe file writing
@@ -131,8 +142,8 @@ def main():
     parser.add_argument(
         "--task-file", 
         type=str, 
-        default="tasks.jsonl",
-        help="Path to the JSONL file containing tasks (default: tasks.jsonl)"
+        default="eval_tasks.jsonl",
+        help="Path to the JSONL file containing tasks (default: eval_tasks.jsonl)"
     )
     parser.add_argument(
         "--max-workers",

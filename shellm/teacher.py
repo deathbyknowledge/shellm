@@ -12,10 +12,10 @@ class ShellResponse(BaseModel):
 class Teacher:
     """Handles interaction with the teacher language model."""
     
-    def __init__(self, base_url: str = "https://api.deepseek.com", api_key: str | None = os.environ.get("DEEPSEEK_API_KEY")):
+    def __init__(self, base_url: str | None = "https://api.deepseek.com", api_key: str | None = os.environ.get("DEEPSEEK_API_KEY"), model: str | None = "deepseek-chat"):
         oai = OpenAI(base_url=base_url, api_key=api_key)
         self.client = instructor.from_openai(oai)
-        self.model = "deepseek-chat"
+        self.model = model
 
     def get_next_step(self, task, trajectory):
         """Constructs a prompt and gets the next thought/action."""

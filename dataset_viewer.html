@@ -224,6 +224,48 @@
         .setup-command:last-child {
             margin-bottom: 0;
         }
+        
+        .evaluation {
+            background: #f8f9fa;
+            padding: 20px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .evaluation-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .rating {
+            display: flex;
+            align-items: center;
+            margin-left: auto;
+        }
+        
+        .rating-stars {
+            color: #ffc107;
+            font-size: 20px;
+            margin-right: 8px;
+        }
+        
+        .rating-number {
+            background: #007acc;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .reasoning {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #28a745;
+            font-style: italic;
+            line-height: 1.5;
+        }
     </style>
 </head>
 <body>
@@ -333,6 +375,14 @@
                 t.trajectory && t.trajectory.length > 0 && 
                 t.trajectory[t.trajectory.length - 1].exit_code === 0
             ).length;
+            
+            // Calculate average rating
+            const ratedTrajectories = trajectoryData.filter(t => 
+                t.evaluation && t.evaluation.rating !== null && t.evaluation.rating !== undefined
+            );
+            const avgRating = ratedTrajectories.length > 0 
+                ? ratedTrajectories.reduce((sum, t) => sum + t.evaluation.rating, 0) / ratedTrajectories.length 
+                : 0;
 
             statsContainer.innerHTML = `
                 <div class="stats">
@@ -353,6 +403,10 @@
                         <div class="stat-item">
                             <div class="stat-number">${Math.round(successfulTrajectories / totalTrajectories * 100)}%</div>
                             <div class="stat-label">Success Rate</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${avgRating > 0 ? avgRating.toFixed(1) : 'N/A'}</div>
+                            <div class="stat-label">Avg Rating</div>
                         </div>
                     </div>
                 </div>
@@ -404,6 +458,21 @@
                         </div>
                     </div>
                 `).join('');
+                
+                // Create evaluation section if available
+                const evaluation = data.evaluation;
+                const evaluationHtml = evaluation ? `
+                    <div class="evaluation">
+                        <div class="evaluation-header">
+                            <div class="section-title">🎯 Evaluation</div>
+                            <div class="rating">
+                                <div class="rating-stars">${generateStars(evaluation.rating)}</div>
+                                <div class="rating-number">${evaluation.rating || 'N/A'}/5</div>
+                            </div>
+                        </div>
+                        <div class="reasoning">${escapeHtml(evaluation.reasoning || 'No reasoning provided')}</div>
+                    </div>
+                ` : '';
 
                 return `
                     <div class="trajectory-container">
@@ -416,10 +485,12 @@
                                 Source: ${escapeHtml(data.source || 'Unknown')} | 
                                 Turns: ${trajectory.length}
                                 ${setupCommands.length > 0 ? ` | Setup Commands: ${setupCommands.length}` : ''}
+                                ${evaluation && evaluation.rating ? ` | Rating: ${evaluation.rating}/5` : ''}
                             </div>
                         </div>
                         ${setupCommandsHtml}
                         ${turnsHtml || '<div class="no-data">No turns in this trajectory</div>'}
+                        ${evaluationHtml}
                     </div>
                 `;
             }).join('');
@@ -429,6 +500,32 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function generateStars(rating) {
+            if (!rating || rating < 1 || rating > 5) return '';
+            
+            let stars = '';
+            const fullStars = Math.floor(rating);
+            const hasHalfStar = rating % 1 >= 0.5;
+            
+            // Add full stars
+            for (let i = 0; i < fullStars; i++) {
+                stars += '★';
+            }
+            
+            // Add half star if needed
+            if (hasHalfStar && fullStars < 5) {
+                stars += '☆';
+            }
+            
+            // Add empty stars to make it 5 total
+            const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+            for (let i = 0; i < emptyStars; i++) {
+                stars += '☆';
+            }
+            
+            return stars;
         }
 
         function showError(message) {
