@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shell Agent Dataset Viewer</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .upload-area {
+            border: 2px dashed #007acc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: white;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: #005a9e;
+            background-color: #f0f8ff;
+        }
+        
+        .upload-area.dragover {
+            border-color: #005a9e;
+            background-color: #e6f3ff;
+        }
+        
+        .file-input {
+            display: none;
+        }
+        
+        .trajectory-container {
+            margin-bottom: 30px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .trajectory-header {
+            background: linear-gradient(135deg, #007acc, #005a9e);
+            color: white;
+            padding: 20px;
+        }
+        
+        .task-description {
+            font-size: 18px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .metadata {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .turn {
+            border-bottom: 1px solid #eee;
+            padding: 20px;
+        }
+        
+        .turn:last-child {
+            border-bottom: none;
+        }
+        
+        .turn-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .turn-number {
+            background: #007acc;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-right: 15px;
+            min-width: 40px;
+            text-align: center;
+        }
+        
+        .exit-code {
+            margin-left: auto;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .exit-code.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .exit-code.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .section {
+            margin-bottom: 15px;
+        }
+        
+        .section-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 1px;
+        }
+        
+        .thought {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 4px solid #007acc;
+            font-style: italic;
+        }
+        
+        .action {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+        }
+        
+        .observation {
+            background: #f1f3f4;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .stats {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #007acc;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        .no-data {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            margin: 40px 0;
+        }
+        
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .setup-commands {
+            background: #e8f4f8;
+            padding: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .setup-command {
+            background: #2d3748;
+            color: #68d391;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            margin-bottom: 8px;
+            overflow-x: auto;
+        }
+        
+        .setup-command:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Shell Agent Dataset Viewer</h1>
+        <p>Upload a JSONL file to view shell agent trajectories</p>
+    </div>
+    
+    <div class="upload-area" id="uploadArea">
+        <h3>📁 Drop your JSONL file here or click to browse</h3>
+        <p>Supports files containing shell agent trajectory data</p>
+        <input type="file" id="fileInput" class="file-input" accept=".jsonl,.json">
+    </div>
+    
+    <div id="statsContainer" style="display: none;"></div>
+    <div id="trajectoryContainer"></div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const trajectoryContainer = document.getElementById('trajectoryContainer');
+        const statsContainer = document.getElementById('statsContainer');
+        
+        let trajectoryData = [];
+
+        // Upload area interactions
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        uploadArea.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                processFile(files[0]);
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file) {
+                processFile(file);
+            }
+        }
+
+        function processFile(file) {
+            if (!file.name.endsWith('.jsonl') && !file.name.endsWith('.json')) {
+                showError('Please select a JSONL or JSON file.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const content = e.target.result;
+                    parseAndDisplayData(content);
+                } catch (error) {
+                    showError('Error reading file: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function parseAndDisplayData(content) {
+            try {
+                trajectoryData = [];
+                const lines = content.trim().split('\n');
+                
+                for (const line of lines) {
+                    if (line.trim()) {
+                        const data = JSON.parse(line);
+                        trajectoryData.push(data);
+                    }
+                }
+                
+                if (trajectoryData.length === 0) {
+                    showError('No valid trajectory data found in the file.');
+                    return;
+                }
+                
+                displayStats();
+                displayTrajectories();
+                
+            } catch (error) {
+                showError('Error parsing JSONL: ' + error.message);
+            }
+        }
+
+        function displayStats() {
+            const totalTrajectories = trajectoryData.length;
+            const totalTurns = trajectoryData.reduce((sum, t) => sum + (t.trajectory ? t.trajectory.length : 0), 0);
+            const avgTurns = totalTurns / totalTrajectories;
+            const successfulTrajectories = trajectoryData.filter(t => 
+                t.trajectory && t.trajectory.length > 0 && 
+                t.trajectory[t.trajectory.length - 1].exit_code === 0
+            ).length;
+
+            statsContainer.innerHTML = `
+                <div class="stats">
+                    <h3>📊 Dataset Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-number">${totalTrajectories}</div>
+                            <div class="stat-label">Total Trajectories</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${totalTurns}</div>
+                            <div class="stat-label">Total Turns</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${avgTurns.toFixed(1)}</div>
+                            <div class="stat-label">Avg Turns per Trajectory</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${Math.round(successfulTrajectories / totalTrajectories * 100)}%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            statsContainer.style.display = 'block';
+        }
+
+        function displayTrajectories() {
+            if (trajectoryData.length === 0) {
+                trajectoryContainer.innerHTML = '<div class="no-data">No trajectories to display</div>';
+                return;
+            }
+
+            trajectoryContainer.innerHTML = trajectoryData.map((data, index) => {
+                const trajectory = data.trajectory || [];
+                const setupCommands = data.setup_commands || [];
+                
+                const setupCommandsHtml = setupCommands.length > 0 ? `
+                    <div class="setup-commands">
+                        <div class="section-title">🔧 Setup Commands</div>
+                        ${setupCommands.map(cmd => `
+                            <div class="setup-command">$ ${escapeHtml(cmd)}</div>
+                        `).join('')}
+                    </div>
+                ` : '';
+                
+                const turnsHtml = trajectory.map(turn => `
+                    <div class="turn">
+                        <div class="turn-header">
+                            <div class="turn-number">Turn ${turn.turn}</div>
+                            <div class="exit-code ${turn.exit_code === 0 ? 'success' : 'error'}">
+                                Exit Code: ${turn.exit_code}
+                            </div>
+                        </div>
+                        
+                        <div class="section">
+                            <div class="section-title">💭 Thought</div>
+                            <div class="thought">${escapeHtml(turn.thought || 'No thought provided')}</div>
+                        </div>
+                        
+                        <div class="section">
+                            <div class="section-title">⚡ Action</div>
+                            <div class="action">$ ${escapeHtml(turn.action)}</div>
+                        </div>
+                        
+                        <div class="section">
+                            <div class="section-title">👁️ Observation</div>
+                            <div class="observation">${escapeHtml(turn.observation || '(no output)')}</div>
+                        </div>
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="trajectory-container">
+                        <div class="trajectory-header">
+                            <div class="task-description">
+                                📋 ${escapeHtml(data.task || 'No task description')}
+                            </div>
+                            <div class="metadata">
+                                Dataset ID: ${escapeHtml(data.dataset_id || 'Unknown')} | 
+                                Source: ${escapeHtml(data.source || 'Unknown')} | 
+                                Turns: ${trajectory.length}
+                                ${setupCommands.length > 0 ? ` | Setup Commands: ${setupCommands.length}` : ''}
+                            </div>
+                        </div>
+                        ${setupCommandsHtml}
+                        ${turnsHtml || '<div class="no-data">No turns in this trajectory</div>'}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showError(message) {
+            trajectoryContainer.innerHTML = `<div class="error">❌ ${message}</div>`;
+            statsContainer.style.display = 'none';
+        }
+    </script>
+</body>
+</html> 
