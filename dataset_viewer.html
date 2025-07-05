@@ -266,6 +266,105 @@
             font-style: italic;
             line-height: 1.5;
         }
+        
+        .task-metadata {
+            background: #e8f4f8;
+            padding: 15px;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+        }
+        
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .metadata-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .metadata-label {
+            font-weight: bold;
+            color: #333;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        
+        .metadata-value {
+            color: #555;
+        }
+        
+        .difficulty-level {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        
+        .difficulty-1 { background: #d4edda; color: #155724; }
+        .difficulty-2 { background: #fff3cd; color: #856404; }
+        .difficulty-3 { background: #ffeaa7; color: #6c5ce7; }
+        .difficulty-4 { background: #fab1a0; color: #e17055; }
+        
+        .tools-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 4px;
+        }
+        
+        .tool-tag {
+            background: #007acc;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .success-condition-check {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            border-left: 4px solid #007acc;
+        }
+        
+        .success-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        
+        .success-status.passed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .success-status.failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .success-condition-output {
+            background: #f1f3f4;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 150px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -384,6 +483,31 @@
                 ? ratedTrajectories.reduce((sum, t) => sum + t.evaluation.rating, 0) / ratedTrajectories.length 
                 : 0;
 
+            // Calculate average realism
+            const realisticTrajectories = trajectoryData.filter(t => 
+                t.how_realistic !== null && t.how_realistic !== undefined
+            );
+            const avgRealism = realisticTrajectories.length > 0 
+                ? realisticTrajectories.reduce((sum, t) => sum + t.how_realistic, 0) / realisticTrajectories.length 
+                : 0;
+
+            // Calculate difficulty distribution
+            const difficultyDistribution = {1: 0, 2: 0, 3: 0, 4: 0};
+            trajectoryData.forEach(t => {
+                if (t.difficulty_level && difficultyDistribution[t.difficulty_level] !== undefined) {
+                    difficultyDistribution[t.difficulty_level]++;
+                }
+            });
+
+            // Calculate success condition stats
+            const successConditionTrajectories = trajectoryData.filter(t => 
+                t.evaluation && t.evaluation.success_condition_passed !== null && t.evaluation.success_condition_passed !== undefined
+            );
+            const successConditionPassed = successConditionTrajectories.filter(t => t.evaluation.success_condition_passed).length;
+            const successConditionRate = successConditionTrajectories.length > 0 
+                ? Math.round(successConditionPassed / successConditionTrajectories.length * 100) 
+                : 0;
+
             statsContainer.innerHTML = `
                 <div class="stats">
                     <h3>📊 Dataset Statistics</h3>
@@ -402,11 +526,23 @@
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">${Math.round(successfulTrajectories / totalTrajectories * 100)}%</div>
-                            <div class="stat-label">Success Rate</div>
+                            <div class="stat-label">Exit Success Rate</div>
                         </div>
                         <div class="stat-item">
                             <div class="stat-number">${avgRating > 0 ? avgRating.toFixed(1) : 'N/A'}</div>
-                            <div class="stat-label">Avg Rating</div>
+                            <div class="stat-label">Avg LLM Rating</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${avgRealism > 0 ? avgRealism.toFixed(2) : 'N/A'}</div>
+                            <div class="stat-label">Avg Realism Score</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${successConditionRate}%</div>
+                            <div class="stat-label">Success Condition Rate</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">L1:${difficultyDistribution[1]} L2:${difficultyDistribution[2]} L3:${difficultyDistribution[3]} L4:${difficultyDistribution[4]}</div>
+                            <div class="stat-label">Difficulty Distribution</div>
                         </div>
                     </div>
                 </div>
@@ -423,6 +559,49 @@
             trajectoryContainer.innerHTML = trajectoryData.map((data, index) => {
                 const trajectory = data.trajectory || [];
                 const setupCommands = data.setup_commands || [];
+                
+                // Helper function to get difficulty level description
+                const getDifficultyDescription = (level) => {
+                    const descriptions = {
+                        1: "Basic Operations",
+                        2: "Simple Composition", 
+                        3: "Multi-Step Logic",
+                        4: "Complex Manipulation"
+                    };
+                    return descriptions[level] || "Unknown";
+                };
+
+                // Create task metadata section
+                const taskMetadataHtml = `
+                    <div class="task-metadata">
+                        <div class="metadata-grid">
+                            <div class="metadata-item">
+                                <div class="metadata-label">📊 Realism Score</div>
+                                <div class="metadata-value">${data.how_realistic !== undefined ? data.how_realistic.toFixed(2) : 'N/A'}</div>
+                            </div>
+                            <div class="metadata-item">
+                                <div class="metadata-label">🎯 Difficulty Level</div>
+                                <div class="metadata-value">
+                                    ${data.difficulty_level ? `<span class="difficulty-level difficulty-${data.difficulty_level}">Level ${data.difficulty_level}</span> - ${getDifficultyDescription(data.difficulty_level)}` : 'N/A'}
+                                </div>
+                            </div>
+                            <div class="metadata-item">
+                                <div class="metadata-label">🛠️ Required Tools</div>
+                                <div class="metadata-value">
+                                    ${data.required_tools && data.required_tools.length > 0 ? `
+                                        <div class="tools-list">
+                                            ${data.required_tools.map(tool => `<span class="tool-tag">${escapeHtml(tool)}</span>`).join('')}
+                                        </div>
+                                    ` : 'None specified'}
+                                </div>
+                            </div>
+                            <div class="metadata-item">
+                                <div class="metadata-label">✅ Success Condition</div>
+                                <div class="metadata-value">${data.success_condition ? `<code>${escapeHtml(data.success_condition)}</code>` : 'Not specified'}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
                 
                 const setupCommandsHtml = setupCommands.length > 0 ? `
                     <div class="setup-commands">
@@ -464,13 +643,26 @@
                 const evaluationHtml = evaluation ? `
                     <div class="evaluation">
                         <div class="evaluation-header">
-                            <div class="section-title">🎯 Evaluation</div>
+                            <div class="section-title">🎯 LLM Judge Evaluation</div>
                             <div class="rating">
                                 <div class="rating-stars">${generateStars(evaluation.rating)}</div>
                                 <div class="rating-number">${evaluation.rating || 'N/A'}/5</div>
                             </div>
                         </div>
                         <div class="reasoning">${escapeHtml(evaluation.reasoning || 'No reasoning provided')}</div>
+                        
+                        ${evaluation.success_condition_passed !== null && evaluation.success_condition_passed !== undefined ? `
+                            <div class="success-condition-check">
+                                <div class="section-title">🔍 Success Condition Check</div>
+                                <div class="success-status ${evaluation.success_condition_passed ? 'passed' : 'failed'}">
+                                    ${evaluation.success_condition_passed ? '✅ PASSED' : '❌ FAILED'}
+                                </div>
+                                ${evaluation.success_condition_output ? `
+                                    <div class="section-title" style="margin-top: 10px; margin-bottom: 5px;">Command Output:</div>
+                                    <div class="success-condition-output">${escapeHtml(evaluation.success_condition_output)}</div>
+                                ` : ''}
+                            </div>
+                        ` : ''}
                     </div>
                 ` : '';
 
@@ -485,9 +677,11 @@
                                 Source: ${escapeHtml(data.source || 'Unknown')} | 
                                 Turns: ${trajectory.length}
                                 ${setupCommands.length > 0 ? ` | Setup Commands: ${setupCommands.length}` : ''}
-                                ${evaluation && evaluation.rating ? ` | Rating: ${evaluation.rating}/5` : ''}
+                                ${evaluation && evaluation.rating ? ` | LLM Rating: ${evaluation.rating}/5` : ''}
+                                ${evaluation && evaluation.success_condition_passed !== null ? ` | Success: ${evaluation.success_condition_passed ? '✅' : '❌'}` : ''}
                             </div>
                         </div>
+                        ${taskMetadataHtml}
                         ${setupCommandsHtml}
                         ${turnsHtml || '<div class="no-data">No turns in this trajectory</div>'}
                         ${evaluationHtml}

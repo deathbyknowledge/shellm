@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
 import argparse
+from tqdm import tqdm
 from task_curator import TaskCurator
 from teacher import Teacher
 from sandbox import Sandbox
@@ -14,13 +15,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def generate_trajectory(task_id, task_description, setup_commands):
+def generate_trajectory(task_id, task_description, setup_commands, how_realistic, difficulty_level, required_tools, success_condition, run_evaluation=True, manual=False):
     """Generates a single trajectory for a given task."""
     print(f"--- Starting generation for Task ID: {task_id} ---")
     print(f"Task: {task_description}")
     print(f"Setup commands: {setup_commands}")
+    print(f"Difficulty level: {difficulty_level}, Realism: {how_realistic}")
+    print(f"Required tools: {required_tools}")
+    print(f"Success condition: {success_condition}")
 
-    teacher = Teacher(base_url=None, api_key=None, model="gpt-4.1-2025-04-14")
+    teacher = Teacher()
     sandbox = Sandbox(setup_commands=setup_commands)
     judge = Judge()
     
@@ -33,16 +37,23 @@ def generate_trajectory(task_id, task_description, setup_commands):
 
     try:
         while current_turn <= 15: # Safety break to prevent infinite loops
-            # Get the next thought and action from the teacher model
-            thought, action = teacher.get_next_step(task_description, trajectory)
+            if manual:
+                action = input(f"Turn {current_turn}: Enter command (or 'exit 0' to finish): ")
+                thought = "Manual user input."
+            else:
+                # Get the next thought and action from the teacher model
+                thought, action = teacher.get_next_step(task_description, trajectory)
 
             if action.strip() == "exit 0":
-                print("Teacher model indicated task is complete.")
+                print("User or model indicated task is complete.")
                 break
 
             # Execute the action in the sandbox
             stdout, stderr, exit_code = sandbox.execute_command(action)
             observation = stdout + stderr
+
+            if manual:
+                print(observation)
 
             # Record the full turn
             turn_data = {
@@ -61,9 +72,27 @@ def generate_trajectory(task_id, task_description, setup_commands):
 
             current_turn += 1
 
-        print(f"--- Evaluating trajectory for Task ID: {task_id} ---")
-        evaluation = judge.evaluate_trajectory(task_description, setup_commands, trajectory)
-        print(f"Evaluation complete. Rating: {evaluation.rating}/5")
+        # Run success condition check if provided
+        success_condition_passed = None
+        success_condition_output = None
+        if success_condition:
+            try:
+                # Run the success condition
+                stdout, stderr, exit_code = sandbox.execute_command(success_condition)
+                success_condition_output = stdout + stderr
+                success_condition_passed = (exit_code == 0)
+                print(f"Success condition result: exit_code={exit_code}, passed={success_condition_passed}")
+            except Exception as e:
+                success_condition_output = f"Error running success condition: {e}"
+                success_condition_passed = False
+                print(f"Error running success condition: {e}")
+
+        if run_evaluation:
+            print(f"--- Evaluating trajectory for Task ID: {task_id} ---")
+            evaluation = judge.evaluate_trajectory(task_description, setup_commands, trajectory)
+            print(f"Evaluation complete. Rating: {evaluation.rating}/5")
+        else:
+            print(f"--- Skipping evaluation for Task ID: {task_id} ---")
 
     finally:
         # Always ensure the sandbox is stopped and cleaned up
@@ -72,13 +101,19 @@ def generate_trajectory(task_id, task_description, setup_commands):
 
     return {
         "dataset_id": f"she_syn_{task_id}",
-        "source": "synthetic_teacher_model_v1",
+        "source": "manual" if manual else "synthetic_teacher_model_v1",
         "setup_commands": setup_commands,
         "task": task_description,
+        "how_realistic": how_realistic,
+        "difficulty_level": difficulty_level,
+        "required_tools": required_tools,
+        "success_condition": success_condition,
         "trajectory": trajectory,
         "evaluation": {
           "rating": evaluation.rating if evaluation else None,
-          "reasoning": evaluation.reasoning if evaluation else "Evaluation did not run."
+          "reasoning": evaluation.reasoning if evaluation else "Evaluation did not run.",
+          "success_condition_passed": success_condition_passed,
+          "success_condition_output": success_condition_output
         }
     }
 
@@ -93,20 +128,24 @@ def write_trajectory_safely(trajectory_data, filename="dataset.jsonl"):
             f.flush()  # Ensure immediate write
     print(f"--- Saved trajectory for Task ID: {trajectory_data['dataset_id']} ---\n")
 
-def generate_and_save_trajectory(task_item, output_file):
+def generate_and_save_trajectory(task_item, output_file, run_evaluation, manual):
     """Wrapper function that generates and saves a trajectory."""
     task_id = task_item['id']
     task_description = task_item['description']
     setup_commands = task_item['setup_commands']
+    how_realistic = task_item['how_realistic']
+    difficulty_level = task_item['difficulty_level']
+    required_tools = task_item['required_tools']
+    success_condition = task_item['success_condition']
     try:
-        trajectory_data = generate_trajectory(task_id, task_description, setup_commands)
+        trajectory_data = generate_trajectory(task_id, task_description, setup_commands, how_realistic, difficulty_level, required_tools, success_condition, run_evaluation, manual)
         write_trajectory_safely(trajectory_data, output_file)
         return f"Completed {task_id}"
     except Exception as e:
         print(f"Error processing {task_id}: {e}")
         return f"Failed {task_id}: {e}"
 
-def run_concurrent_generation(task_file="tasks.jsonl", max_workers=3, output_file="dataset.jsonl", limit=20):
+def run_concurrent_generation(task_file="tasks.jsonl", max_workers=3, output_file="dataset.jsonl", limit=20, run_evaluation=True, manual=False):
     """Run trajectory generation with controlled concurrency."""
     curator = TaskCurator(task_file=task_file)
     tasks = curator.get_tasks(limit=limit)
@@ -114,24 +153,31 @@ def run_concurrent_generation(task_file="tasks.jsonl", max_workers=3, output_fil
     print(f"Starting concurrent generation with max {max_workers} workers...")
     print(f"Processing {len(tasks)} tasks from {task_file}")
     print(f"Output will be saved to {output_file}")
-    
+    if not run_evaluation:
+        print("LLM-judge evaluation is disabled.")
+    if manual:
+        print("Manual mode is enabled. You will be prompted for commands.")
+
     start_time = time.time()
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_task = {
-            executor.submit(generate_and_save_trajectory, task_item, output_file): task_item['id'] 
+            executor.submit(generate_and_save_trajectory, task_item, output_file, run_evaluation, manual): task_item['id'] 
             for task_item in tasks
         }
         
-        # Process completed tasks as they finish
-        for future in future_to_task:
-            task_id = future_to_task[future]
-            try:
-                result = future.result()
-                print(f"✅ {result}")
-            except Exception as e:
-                print(f"❌ Task {task_id} failed: {e}")
+        # Process completed tasks as they finish with progress bar
+        from concurrent.futures import as_completed
+        with tqdm(total=len(tasks), desc="Processing tasks", unit="task") as pbar:
+            for future in as_completed(future_to_task):
+                task_id = future_to_task[future]
+                try:
+                    result = future.result()
+                    print(f"✅ {result}")
+                except Exception as e:
+                    print(f"❌ Task {task_id} failed: {e}")
+                pbar.update(1)
     
     end_time = time.time()
     print(f"\n🎉 All tasks completed in {end_time - start_time:.1f} seconds")
@@ -163,15 +209,33 @@ def main():
         default=20,
         help="Maximum number of tasks to process (default: 20)"
     )
+    parser.add_argument(
+        "--run-evaluation",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable or disable the LLM-judge evaluation. Enabled by default."
+    )
+    parser.add_argument(
+        "--manual",
+        action="store_true",
+        help="Enable manual mode to override LLM actions with user input."
+    )
     
     args = parser.parse_args()
     
+    max_workers = args.max_workers
+    if args.manual:
+        print("Manual mode enabled. Overriding max_workers to 1.")
+        max_workers = 1
+
     # Run the concurrent generation
     run_concurrent_generation(
         task_file=args.task_file,
-        max_workers=args.max_workers,
+        max_workers=max_workers,
         output_file=args.output_file,
-        limit=args.limit
+        limit=args.limit,
+        run_evaluation=args.run_evaluation,
+        manual=args.manual
     )
 
 if __name__ == "__main__":

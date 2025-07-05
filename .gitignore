@@ -1,3 +1,4 @@
 __pycache__
 .env
 *.jsonl
+.chroma_db
