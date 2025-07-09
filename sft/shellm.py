@@ -1,15 +1,18 @@
+from dotenv import load_dotenv
 import verifiers as vf
 from datasets import load_dataset
 from trl import SFTTrainer, SFTConfig
 
+load_dotenv()
+
 """
-accelerate launch --config-file configs/zero3.yaml verifiers/examples/sft/wiki_search.py
+accelerate launch --config-file sft/zero3.yaml sft/shellm.py
 """
 
 # convenience function for FA2 initialization
 model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-7B-Instruct", use_liger=False)
 dataset = load_dataset('deathbyknowledge/V3-shell-format', split='train')
-dataset = dataset.select(range(100)) # type: ignore
+dataset = dataset.select(range(300)) # type: ignore
 
 tok_counts = []
 for row in dataset:

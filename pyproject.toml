@@ -29,3 +29,10 @@ dependencies = [
     "datasets>=3.6.0",
     "trl>=0.19.0",
 ]
+
+[project.optional-dependencies]
+sft = [
+    "accelerate",
+    "deepspeed",
+    "flash-attn",
+]
