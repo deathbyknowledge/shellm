@@ -3,7 +3,7 @@ name = "shellm"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "instructor>=1.8.3",
     "ipykernel>=6.29.5",
