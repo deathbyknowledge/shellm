@@ -145,6 +145,7 @@
             font-family: 'Courier New', monospace;
             font-size: 14px;
             overflow-x: auto;
+            white-space: pre-wrap;
         }
         
         .observation {
@@ -365,21 +366,218 @@
             max-height: 150px;
             overflow-y: auto;
         }
+        
+        .models-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .models-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .model-tag {
+            background: #007acc;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .model-tag .remove-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+        }
+        
+        .model-tag .remove-btn:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .view-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .view-btn {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s ease;
+        }
+        
+        .view-btn:hover {
+            background: #005a9e;
+        }
+        
+        .view-btn.active {
+            background: #005a9e;
+        }
+        
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .comparison-task {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .comparison-task-header {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+        }
+        
+        .comparison-models {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 0;
+        }
+        
+        .comparison-model {
+            border-right: 1px solid #eee;
+            padding: 15px;
+        }
+        
+        .comparison-model:last-child {
+            border-right: none;
+        }
+        
+        .comparison-model-name {
+            font-weight: bold;
+            color: #007acc;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .comparison-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .comparison-metric {
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        .comparison-metric-value {
+            font-weight: bold;
+            color: #007acc;
+            font-size: 16px;
+        }
+        
+        .comparison-metric-label {
+            color: #666;
+            font-size: 10px;
+        }
+        
+        .comparison-summary {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .comparison-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        
+        .winner-badge {
+            background: #28a745;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        
+        .model-filter {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .model-filter-btn {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .model-filter-btn.active {
+            background: #007acc;
+            color: white;
+            border-color: #007acc;
+        }
+        
+        .model-filter-btn:hover {
+            background: #e9ecef;
+        }
+        
+        .model-filter-btn.active:hover {
+            background: #005a9e;
+        }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>🤖 Shell Agent Dataset Viewer</h1>
-        <p>Upload a JSONL file to view shell agent trajectories</p>
+        <h1>🤖 Shell Agent Dataset Comparator</h1>
+        <p>Upload multiple JSONL files to compare model performance on the same tasks</p>
     </div>
     
     <div class="upload-area" id="uploadArea">
-        <h3>📁 Drop your JSONL file here or click to browse</h3>
-        <p>Supports files containing shell agent trajectory data</p>
-        <input type="file" id="fileInput" class="file-input" accept=".jsonl,.json">
+        <h3>📁 Drop your JSONL files here or click to browse</h3>
+        <p>Upload multiple dataset files - filename will be used as model name</p>
+        <input type="file" id="fileInput" class="file-input" accept=".jsonl,.json" multiple>
     </div>
     
+    <div id="modelsContainer" style="display: none;"></div>
     <div id="statsContainer" style="display: none;"></div>
+    <div id="comparisonContainer" style="display: none;"></div>
     <div id="trajectoryContainer"></div>
 
     <script>
@@ -387,8 +585,12 @@
         const fileInput = document.getElementById('fileInput');
         const trajectoryContainer = document.getElementById('trajectoryContainer');
         const statsContainer = document.getElementById('statsContainer');
+        const modelsContainer = document.getElementById('modelsContainer');
+        const comparisonContainer = document.getElementById('comparisonContainer');
         
-        let trajectoryData = [];
+        let modelsData = {}; // {modelName: trajectoryData}
+        let currentView = 'individual'; // 'individual' or 'comparison'
+        let selectedModels = new Set();
 
         // Upload area interactions
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -410,40 +612,47 @@
         function handleDrop(e) {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
-            const files = e.dataTransfer.files;
+            const files = Array.from(e.dataTransfer.files);
             if (files.length > 0) {
-                processFile(files[0]);
+                processMultipleFiles(files);
             }
         }
 
         function handleFileSelect(e) {
-            const file = e.target.files[0];
-            if (file) {
-                processFile(file);
+            const files = Array.from(e.target.files);
+            if (files.length > 0) {
+                processMultipleFiles(files);
             }
         }
 
-        function processFile(file) {
-            if (!file.name.endsWith('.jsonl') && !file.name.endsWith('.json')) {
-                showError('Please select a JSONL or JSON file.');
-                return;
-            }
+        function processMultipleFiles(files) {
+            files.forEach(file => {
+                if (file.name.endsWith('.jsonl') || file.name.endsWith('.json')) {
+                    processFile(file);
+                } else {
+                    showError(`Skipping ${file.name}: Not a JSONL or JSON file.`);
+                }
+            });
+        }
 
+        function processFile(file) {
+            const modelName = file.name.replace(/\.(jsonl|json)$/, '');
+            
             const reader = new FileReader();
             reader.onload = function(e) {
                 try {
                     const content = e.target.result;
-                    parseAndDisplayData(content);
+                    parseAndStoreData(content, modelName);
                 } catch (error) {
-                    showError('Error reading file: ' + error.message);
+                    showError(`Error reading ${file.name}: ${error.message}`);
                 }
             };
             reader.readAsText(file);
         }
 
-        function parseAndDisplayData(content) {
+        function parseAndStoreData(content, modelName) {
             try {
-                trajectoryData = [];
+                const trajectoryData = [];
                 const lines = content.trim().split('\n');
                 
                 for (const line of lines) {
@@ -454,109 +663,411 @@
                 }
                 
                 if (trajectoryData.length === 0) {
-                    showError('No valid trajectory data found in the file.');
+                    showError(`No valid trajectory data found in ${modelName}.`);
                     return;
                 }
                 
+                modelsData[modelName] = trajectoryData;
+                selectedModels.add(modelName);
+                
+                displayModels();
                 displayStats();
-                displayTrajectories();
+                displayContent();
                 
             } catch (error) {
-                showError('Error parsing JSONL: ' + error.message);
+                showError(`Error parsing ${modelName}: ${error.message}`);
+            }
+        }
+
+        function displayModels() {
+            const modelNames = Object.keys(modelsData);
+            if (modelNames.length === 0) {
+                modelsContainer.style.display = 'none';
+                return;
+            }
+            
+            const modelsHtml = `
+                <div class="models-container">
+                    <h3>📊 Loaded Models (${modelNames.length})</h3>
+                    <div class="models-list">
+                        ${modelNames.map(modelName => `
+                            <div class="model-tag">
+                                ${escapeHtml(modelName)}
+                                <button class="remove-btn" onclick="removeModel('${modelName}')" title="Remove model">×</button>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="view-controls">
+                        <button class="view-btn ${currentView === 'individual' ? 'active' : ''}" onclick="setView('individual')">
+                            Individual View
+                        </button>
+                        <button class="view-btn ${currentView === 'comparison' ? 'active' : ''}" onclick="setView('comparison')" ${modelNames.length < 2 ? 'disabled' : ''}>
+                            Comparison View
+                        </button>
+                    </div>
+                    ${currentView === 'individual' ? `
+                        <div class="model-filter">
+                            ${modelNames.map(modelName => `
+                                <button class="model-filter-btn ${selectedModels.has(modelName) ? 'active' : ''}" onclick="toggleModel('${modelName}')">
+                                    ${escapeHtml(modelName)}
+                                </button>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+            
+            modelsContainer.innerHTML = modelsHtml;
+            modelsContainer.style.display = 'block';
+        }
+
+        function removeModel(modelName) {
+            delete modelsData[modelName];
+            selectedModels.delete(modelName);
+            
+            if (Object.keys(modelsData).length === 0) {
+                modelsContainer.style.display = 'none';
+                statsContainer.style.display = 'none';
+                comparisonContainer.style.display = 'none';
+                trajectoryContainer.innerHTML = '';
+                return;
+            }
+            
+            displayModels();
+            displayStats();
+            displayContent();
+        }
+
+        function setView(view) {
+            currentView = view;
+            displayModels();
+            displayStats();
+            displayContent();
+        }
+
+        function toggleModel(modelName) {
+            if (selectedModels.has(modelName)) {
+                selectedModels.delete(modelName);
+            } else {
+                selectedModels.add(modelName);
+            }
+            displayModels();
+            displayContent();
+        }
+
+        function displayContent() {
+            if (currentView === 'comparison') {
+                displayComparison();
+            } else {
+                displayTrajectories();
             }
         }
 
         function displayStats() {
-            const totalTrajectories = trajectoryData.length;
-            const totalTurns = trajectoryData.reduce((sum, t) => sum + (t.trajectory ? t.trajectory.length : 0), 0);
-            const avgTurns = totalTurns / totalTrajectories;
-            const successfulTrajectories = trajectoryData.filter(t => 
-                t.trajectory && t.trajectory.length > 0 && 
-                t.trajectory[t.trajectory.length - 1].exit_code === 0
-            ).length;
-            
-            // Calculate average rating
-            const ratedTrajectories = trajectoryData.filter(t => 
-                t.evaluation && t.evaluation.rating !== null && t.evaluation.rating !== undefined
-            );
-            const avgRating = ratedTrajectories.length > 0 
-                ? ratedTrajectories.reduce((sum, t) => sum + t.evaluation.rating, 0) / ratedTrajectories.length 
-                : 0;
+            const modelNames = Object.keys(modelsData);
+            if (modelNames.length === 0) {
+                statsContainer.style.display = 'none';
+                return;
+            }
 
-            // Calculate average realism
-            const realisticTrajectories = trajectoryData.filter(t => 
-                t.how_realistic !== null && t.how_realistic !== undefined
-            );
-            const avgRealism = realisticTrajectories.length > 0 
-                ? realisticTrajectories.reduce((sum, t) => sum + t.how_realistic, 0) / realisticTrajectories.length 
-                : 0;
+            if (currentView === 'comparison') {
+                displayComparisonStats();
+                return;
+            }
 
-            // Calculate difficulty distribution
-            const difficultyDistribution = {1: 0, 2: 0, 3: 0, 4: 0};
-            trajectoryData.forEach(t => {
-                if (t.difficulty_level && difficultyDistribution[t.difficulty_level] !== undefined) {
-                    difficultyDistribution[t.difficulty_level]++;
-                }
-            });
+            const activeModels = modelNames.filter(name => selectedModels.has(name));
+            if (activeModels.length === 0) {
+                statsContainer.style.display = 'none';
+                return;
+            }
 
-            // Calculate success condition stats
-            const successConditionTrajectories = trajectoryData.filter(t => 
-                t.evaluation && t.evaluation.success_condition_passed !== null && t.evaluation.success_condition_passed !== undefined
-            );
-            const successConditionPassed = successConditionTrajectories.filter(t => t.evaluation.success_condition_passed).length;
-            const successConditionRate = successConditionTrajectories.length > 0 
-                ? Math.round(successConditionPassed / successConditionTrajectories.length * 100) 
-                : 0;
+            const statsHtml = activeModels.map(modelName => {
+                const trajectoryData = modelsData[modelName];
+                const totalTrajectories = trajectoryData.length;
+                const totalTurns = trajectoryData.reduce((sum, t) => sum + (t.trajectory ? t.trajectory.length : 0), 0);
+                const avgTurns = totalTurns / totalTrajectories;
+                const successfulTrajectories = trajectoryData.filter(t => 
+                    t.trajectory && t.trajectory.length > 0 && 
+                    t.trajectory[t.trajectory.length - 1].exit_code === 0
+                ).length;
+                
+                const ratedTrajectories = trajectoryData.filter(t => 
+                    t.evaluation && t.evaluation.rating !== null && t.evaluation.rating !== undefined
+                );
+                const avgRating = ratedTrajectories.length > 0 
+                    ? ratedTrajectories.reduce((sum, t) => sum + t.evaluation.rating, 0) / ratedTrajectories.length 
+                    : 0;
 
-            statsContainer.innerHTML = `
-                <div class="stats">
-                    <h3>📊 Dataset Statistics</h3>
-                    <div class="stats-grid">
-                        <div class="stat-item">
-                            <div class="stat-number">${totalTrajectories}</div>
-                            <div class="stat-label">Total Trajectories</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">${totalTurns}</div>
-                            <div class="stat-label">Total Turns</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">${avgTurns.toFixed(1)}</div>
-                            <div class="stat-label">Avg Turns per Trajectory</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">${Math.round(successfulTrajectories / totalTrajectories * 100)}%</div>
-                            <div class="stat-label">Exit Success Rate</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">${avgRating > 0 ? avgRating.toFixed(1) : 'N/A'}</div>
-                            <div class="stat-label">Avg LLM Rating</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">${avgRealism > 0 ? avgRealism.toFixed(2) : 'N/A'}</div>
-                            <div class="stat-label">Avg Realism Score</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">${successConditionRate}%</div>
-                            <div class="stat-label">Success Condition Rate</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">L1:${difficultyDistribution[1]} L2:${difficultyDistribution[2]} L3:${difficultyDistribution[3]} L4:${difficultyDistribution[4]}</div>
-                            <div class="stat-label">Difficulty Distribution</div>
+                const realisticTrajectories = trajectoryData.filter(t => 
+                    t.how_realistic !== null && t.how_realistic !== undefined
+                );
+                const avgRealism = realisticTrajectories.length > 0 
+                    ? realisticTrajectories.reduce((sum, t) => sum + t.how_realistic, 0) / realisticTrajectories.length 
+                    : 0;
+
+                const difficultyDistribution = {1: 0, 2: 0, 3: 0, 4: 0};
+                trajectoryData.forEach(t => {
+                    if (t.difficulty_level && difficultyDistribution[t.difficulty_level] !== undefined) {
+                        difficultyDistribution[t.difficulty_level]++;
+                    }
+                });
+
+                const successConditionTrajectories = trajectoryData.filter(t => 
+                    t.evaluation && t.evaluation.success_condition_passed !== null && t.evaluation.success_condition_passed !== undefined
+                );
+                const successConditionPassed = successConditionTrajectories.filter(t => t.evaluation.success_condition_passed).length;
+                const successConditionRate = successConditionTrajectories.length > 0 
+                    ? Math.round(successConditionPassed / successConditionTrajectories.length * 100) 
+                    : 0;
+
+                return `
+                    <div class="stats">
+                        <h3>📊 ${escapeHtml(modelName)} Statistics</h3>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-number">${totalTrajectories}</div>
+                                <div class="stat-label">Total Trajectories</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${totalTurns}</div>
+                                <div class="stat-label">Total Turns</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${avgTurns.toFixed(1)}</div>
+                                <div class="stat-label">Avg Turns per Trajectory</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${Math.round(successfulTrajectories / totalTrajectories * 100)}%</div>
+                                <div class="stat-label">Exit Success Rate</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${avgRating > 0 ? avgRating.toFixed(1) : 'N/A'}</div>
+                                <div class="stat-label">Avg LLM Rating</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${avgRealism > 0 ? avgRealism.toFixed(2) : 'N/A'}</div>
+                                <div class="stat-label">Avg Realism Score</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${successConditionRate}%</div>
+                                <div class="stat-label">Success Condition Rate</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">L1:${difficultyDistribution[1]} L2:${difficultyDistribution[2]} L3:${difficultyDistribution[3]} L4:${difficultyDistribution[4]}</div>
+                                <div class="stat-label">Difficulty Distribution</div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            }).join('');
+
+            statsContainer.innerHTML = statsHtml;
             statsContainer.style.display = 'block';
         }
 
+        function displayComparisonStats() {
+            const modelNames = Object.keys(modelsData);
+            const modelStats = {};
+            
+            // Calculate stats for each model
+            modelNames.forEach(modelName => {
+                const trajectoryData = modelsData[modelName];
+                const totalTrajectories = trajectoryData.length;
+                const successfulTrajectories = trajectoryData.filter(t => 
+                    t.trajectory && t.trajectory.length > 0 && 
+                    t.trajectory[t.trajectory.length - 1].exit_code === 0
+                ).length;
+                
+                const ratedTrajectories = trajectoryData.filter(t => 
+                    t.evaluation && t.evaluation.rating !== null && t.evaluation.rating !== undefined
+                );
+                const avgRating = ratedTrajectories.length > 0 
+                    ? ratedTrajectories.reduce((sum, t) => sum + t.evaluation.rating, 0) / ratedTrajectories.length 
+                    : 0;
+                
+                const successConditionTrajectories = trajectoryData.filter(t => 
+                    t.evaluation && t.evaluation.success_condition_passed !== null && t.evaluation.success_condition_passed !== undefined
+                );
+                const successConditionPassed = successConditionTrajectories.filter(t => t.evaluation.success_condition_passed).length;
+                const successConditionRate = successConditionTrajectories.length > 0 
+                    ? successConditionPassed / successConditionTrajectories.length * 100
+                    : 0;
+                
+                modelStats[modelName] = {
+                    totalTrajectories,
+                    successRate: successfulTrajectories / totalTrajectories * 100,
+                    avgRating,
+                    successConditionRate
+                };
+            });
+
+            const statsHtml = `
+                <div class="stats">
+                    <h3>🆚 Model Comparison Statistics</h3>
+                    <div class="comparison-stats-grid">
+                        ${modelNames.map(modelName => {
+                            const stats = modelStats[modelName];
+                            return `
+                                <div class="stat-item">
+                                    <div class="stat-label">${escapeHtml(modelName)}</div>
+                                    <div class="stat-number">${stats.successRate.toFixed(1)}%</div>
+                                    <div class="stat-label">Success Rate</div>
+                                    <div class="stat-number">${stats.avgRating > 0 ? stats.avgRating.toFixed(1) : 'N/A'}</div>
+                                    <div class="stat-label">Avg Rating</div>
+                                    <div class="stat-number">${stats.successConditionRate.toFixed(1)}%</div>
+                                    <div class="stat-label">Success Condition Rate</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+
+            statsContainer.innerHTML = statsHtml;
+            statsContainer.style.display = 'block';
+        }
+
+        function displayComparison() {
+            const modelNames = Object.keys(modelsData);
+            if (modelNames.length < 2) {
+                comparisonContainer.innerHTML = '<div class="no-data">Need at least 2 models to compare</div>';
+                comparisonContainer.style.display = 'block';
+                trajectoryContainer.innerHTML = '';
+                return;
+            }
+
+            // Find common tasks across all models
+            const commonTasks = findCommonTasks(modelNames);
+            
+            if (commonTasks.length === 0) {
+                comparisonContainer.innerHTML = '<div class="no-data">No common tasks found across all models</div>';
+                comparisonContainer.style.display = 'block';
+                trajectoryContainer.innerHTML = '';
+                return;
+            }
+
+            const comparisonHtml = commonTasks.map(taskId => {
+                const taskData = {};
+                modelNames.forEach(modelName => {
+                    const trajectory = modelsData[modelName].find(t => 
+                        t.dataset_id === taskId || t.task === taskId
+                    );
+                    if (trajectory) {
+                        taskData[modelName] = trajectory;
+                    }
+                });
+
+                const taskDescription = Object.values(taskData)[0]?.task || taskId;
+                
+                return `
+                    <div class="comparison-task">
+                        <div class="comparison-task-header">
+                            📋 ${escapeHtml(taskDescription)}
+                        </div>
+                        <div class="comparison-models">
+                            ${modelNames.map(modelName => {
+                                const trajectory = taskData[modelName];
+                                if (!trajectory) return '';
+                                
+                                const lastTurn = trajectory.trajectory && trajectory.trajectory.length > 0 
+                                    ? trajectory.trajectory[trajectory.trajectory.length - 1] 
+                                    : null;
+                                const exitCode = lastTurn ? lastTurn.exit_code : null;
+                                const evaluation = trajectory.evaluation;
+                                const turns = trajectory.trajectory ? trajectory.trajectory.length : 0;
+                                
+                                return `
+                                    <div class="comparison-model">
+                                        <div class="comparison-model-name">
+                                            ${escapeHtml(modelName)}
+                                            ${evaluation && evaluation.rating === Math.max(...modelNames.map(mn => taskData[mn]?.evaluation?.rating || 0)) ? '<span class="winner-badge">🏆</span>' : ''}
+                                        </div>
+                                        <div class="comparison-metrics">
+                                            <div class="comparison-metric">
+                                                <div class="comparison-metric-value">${exitCode === 0 ? '✅' : '❌'}</div>
+                                                <div class="comparison-metric-label">Exit Success</div>
+                                            </div>
+                                            <div class="comparison-metric">
+                                                <div class="comparison-metric-value">${evaluation?.rating || 'N/A'}</div>
+                                                <div class="comparison-metric-label">LLM Rating</div>
+                                            </div>
+                                            <div class="comparison-metric">
+                                                <div class="comparison-metric-value">${turns}</div>
+                                                <div class="comparison-metric-label">Turns</div>
+                                            </div>
+                                            <div class="comparison-metric">
+                                                <div class="comparison-metric-value">${evaluation?.success_condition_passed === true ? '✅' : evaluation?.success_condition_passed === false ? '❌' : 'N/A'}</div>
+                                                <div class="comparison-metric-label">Success Condition</div>
+                                            </div>
+                                        </div>
+                                        ${evaluation?.reasoning ? `
+                                            <div class="reasoning" style="margin-top: 10px; font-size: 12px; max-height: 100px; overflow-y: auto;">
+                                                ${escapeHtml(evaluation.reasoning)}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            comparisonContainer.innerHTML = `
+                <div class="comparison-summary">
+                    <h3>🆚 Task Comparison (${commonTasks.length} common tasks)</h3>
+                    <p>Comparing performance across ${modelNames.length} models on tasks that appear in all datasets.</p>
+                </div>
+                ${comparisonHtml}
+            `;
+            comparisonContainer.style.display = 'block';
+            trajectoryContainer.innerHTML = '';
+        }
+
+        function findCommonTasks(modelNames) {
+            if (modelNames.length === 0) return [];
+            
+            // Get task identifiers for the first model
+            const firstModelTasks = new Set(
+                modelsData[modelNames[0]].map(t => t.dataset_id || t.task)
+            );
+            
+            // Find tasks that exist in all models
+            const commonTasks = [];
+            firstModelTasks.forEach(taskId => {
+                const existsInAll = modelNames.every(modelName => 
+                    modelsData[modelName].some(t => (t.dataset_id || t.task) === taskId)
+                );
+                if (existsInAll) {
+                    commonTasks.push(taskId);
+                }
+            });
+            
+            return commonTasks;
+        }
+
         function displayTrajectories() {
-            if (trajectoryData.length === 0) {
+            const activeModels = Object.keys(modelsData).filter(name => selectedModels.has(name));
+            if (activeModels.length === 0) {
+                trajectoryContainer.innerHTML = '<div class="no-data">No models selected</div>';
+                return;
+            }
+
+            const allTrajectories = [];
+            activeModels.forEach(modelName => {
+                modelsData[modelName].forEach(trajectory => {
+                    allTrajectories.push({ ...trajectory, modelName });
+                });
+            });
+
+            if (allTrajectories.length === 0) {
                 trajectoryContainer.innerHTML = '<div class="no-data">No trajectories to display</div>';
                 return;
             }
 
-            trajectoryContainer.innerHTML = trajectoryData.map((data, index) => {
+            comparisonContainer.style.display = 'none';
+            
+            trajectoryContainer.innerHTML = allTrajectories.map((data, index) => {
                 const trajectory = data.trajectory || [];
                 const setupCommands = data.setup_commands || [];
                 
@@ -575,6 +1086,10 @@
                 const taskMetadataHtml = `
                     <div class="task-metadata">
                         <div class="metadata-grid">
+                            <div class="metadata-item">
+                                <div class="metadata-label">🤖 Model</div>
+                                <div class="metadata-value"><strong>${escapeHtml(data.modelName)}</strong></div>
+                            </div>
                             <div class="metadata-item">
                                 <div class="metadata-label">📊 Realism Score</div>
                                 <div class="metadata-value">${data.how_realistic !== undefined ? data.how_realistic.toFixed(2) : 'N/A'}</div>
@@ -622,13 +1137,8 @@
                         </div>
                         
                         <div class="section">
-                            <div class="section-title">💭 Thought</div>
-                            <div class="thought">${escapeHtml(turn.thought || 'No thought provided')}</div>
-                        </div>
-                        
-                        <div class="section">
-                            <div class="section-title">⚡ Action</div>
-                            <div class="action">$ ${escapeHtml(turn.action)}</div>
+                            <div class="section-title">💻 Terminal</div>
+                            <div class="action">${turn.thought && turn.thought.trim() ? `$ ${turn.thought.slice(0, 2) != '# ' ?'# ':''}${escapeHtml(turn.thought)}\n` : ''}$ ${escapeHtml(turn.action)}</div>
                         </div>
                         
                         <div class="section">
@@ -673,6 +1183,7 @@
                                 📋 ${escapeHtml(data.task || 'No task description')}
                             </div>
                             <div class="metadata">
+                                Model: ${escapeHtml(data.modelName)} | 
                                 Dataset ID: ${escapeHtml(data.dataset_id || 'Unknown')} | 
                                 Source: ${escapeHtml(data.source || 'Unknown')} | 
                                 Turns: ${trajectory.length}
@@ -725,6 +1236,7 @@
         function showError(message) {
             trajectoryContainer.innerHTML = `<div class="error">❌ ${message}</div>`;
             statsContainer.style.display = 'none';
+            comparisonContainer.style.display = 'none';
         }
     </script>
 </body>

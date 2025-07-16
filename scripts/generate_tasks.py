@@ -6,11 +6,9 @@ import json
 import asyncio
 import numpy as np
 from openai import OpenAI, AsyncOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from chromadb.utils import embedding_functions
-
-
 
 load_dotenv()
 
@@ -64,9 +62,6 @@ Example output:
   "success_condition": "tar -tzf /tmp/old_logs.tar.gz | grep -q 'events_2024-05-10.log' && tar -tzf /tmp/old_logs.tar.gz | grep -q 'errors_2024-05-11.log' && ! tar -tzf /tmp/old_logs.tar.gz | grep -q 'events_2024-05-18.log'"
 }}
 """
-
-print(system_prompt)
-
 
 class Task(BaseModel):
     description: str

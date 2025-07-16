@@ -1,21 +1,25 @@
 # main.py
+from tqdm import tqdm
+from task_curator import TaskCurator
+from teacher import Teacher, ShellTeacher
+from sandbox import Sandbox
+from judge import Judge
+
+import aiofiles
+from dotenv import load_dotenv
 import json
 import asyncio
-import aiofiles
+import os
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import time
+import subprocess
+import requests
 import argparse
-from tqdm import tqdm
-from task_curator import TaskCurator
-from teacher import Teacher
-from sandbox import Sandbox
-from judge import Judge
-from dotenv import load_dotenv
 
 load_dotenv()
 
-def generate_trajectory(task_id, task_description, setup_commands, how_realistic, difficulty_level, required_tools, success_condition, run_evaluation=True, manual=False):
+def generate_trajectory(task_id, task_description, setup_commands, how_realistic, difficulty_level, required_tools, success_condition, run_evaluation=True, manual=False, teacher_base_url=None, teacher_api_key=None, teacher_model=None):
     """Generates a single trajectory for a given task."""
     print(f"--- Starting generation for Task ID: {task_id} ---")
     print(f"Task: {task_description}")
@@ -24,7 +28,15 @@ def generate_trajectory(task_id, task_description, setup_commands, how_realistic
     print(f"Required tools: {required_tools}")
     print(f"Success condition: {success_condition}")
 
-    teacher = Teacher()
+    # Use provided teacher configuration or fall back to defaults
+    if teacher_base_url is None:
+        teacher_base_url = "https://api.deepseek.com"
+    if teacher_api_key is None:
+        teacher_api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if teacher_model is None:
+        teacher_model = "deepseek-chat"
+
+    teacher = ShellTeacher(base_url=teacher_base_url, api_key=teacher_api_key, model=teacher_model)
     sandbox = Sandbox(setup_commands=setup_commands)
     judge = Judge()
     
@@ -44,7 +56,7 @@ def generate_trajectory(task_id, task_description, setup_commands, how_realistic
                 # Get the next thought and action from the teacher model
                 thought, action = teacher.get_next_step(task_description, trajectory)
 
-            if action.strip() == "exit 0":
+            if "exit 0" in action.strip():
                 print("User or model indicated task is complete.")
                 break
 
@@ -128,24 +140,24 @@ def write_trajectory_safely(trajectory_data, filename="dataset.jsonl"):
             f.flush()  # Ensure immediate write
     print(f"--- Saved trajectory for Task ID: {trajectory_data['dataset_id']} ---\n")
 
-def generate_and_save_trajectory(task_item, output_file, run_evaluation, manual):
+def generate_and_save_trajectory(task_item, output_file, run_evaluation, manual, teacher_base_url=None, teacher_api_key=None, teacher_model=None):
     """Wrapper function that generates and saves a trajectory."""
     task_id = task_item['id']
-    task_description = task_item['description']
+    task_description = task_item['task']
     setup_commands = task_item['setup_commands']
     how_realistic = task_item['how_realistic']
     difficulty_level = task_item['difficulty_level']
     required_tools = task_item['required_tools']
     success_condition = task_item['success_condition']
     try:
-        trajectory_data = generate_trajectory(task_id, task_description, setup_commands, how_realistic, difficulty_level, required_tools, success_condition, run_evaluation, manual)
+        trajectory_data = generate_trajectory(task_id, task_description, setup_commands, how_realistic, difficulty_level, required_tools, success_condition, run_evaluation, manual, teacher_base_url, teacher_api_key, teacher_model)
         write_trajectory_safely(trajectory_data, output_file)
         return f"Completed {task_id}"
     except Exception as e:
         print(f"Error processing {task_id}: {e}")
         return f"Failed {task_id}: {e}"
 
-def run_concurrent_generation(task_file="tasks.jsonl", max_workers=3, output_file="dataset.jsonl", limit=20, run_evaluation=True, manual=False):
+def run_concurrent_generation(task_file="tasks.jsonl", max_workers=3, output_file="dataset.jsonl", limit=20, run_evaluation=True, manual=False, teacher_base_url=None, teacher_api_key=None, teacher_model=None):
     """Run trajectory generation with controlled concurrency."""
     curator = TaskCurator(task_file=task_file)
     tasks = curator.get_tasks(limit=limit)
@@ -163,7 +175,7 @@ def run_concurrent_generation(task_file="tasks.jsonl", max_workers=3, output_fil
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all tasks
         future_to_task = {
-            executor.submit(generate_and_save_trajectory, task_item, output_file, run_evaluation, manual): task_item['id'] 
+            executor.submit(generate_and_save_trajectory, task_item, output_file, run_evaluation, manual, teacher_base_url, teacher_api_key, teacher_model): task_item['id'] 
             for task_item in tasks
         }
         
@@ -188,7 +200,7 @@ def main():
     parser.add_argument(
         "--task-file", 
         type=str, 
-        default="eval_tasks.jsonl",
+        default="eval_split.jsonl",
         help="Path to the JSONL file containing tasks (default: eval_tasks.jsonl)"
     )
     parser.add_argument(
@@ -222,7 +234,12 @@ def main():
     )
     
     args = parser.parse_args()
-    
+    print(os.getenv("HTTP_PROXY"))
+
+    teacher_base_url = "http://rearden:8000/v1"
+    teacher_api_key = "MEOW"
+    teacher_model = "deathbyknowledge/Qwen3-8B-Shell-SFT"
+
     max_workers = args.max_workers
     if args.manual:
         print("Manual mode enabled. Overriding max_workers to 1.")
@@ -235,7 +252,10 @@ def main():
         output_file=args.output_file,
         limit=args.limit,
         run_evaluation=args.run_evaluation,
-        manual=args.manual
+        manual=args.manual,
+        teacher_base_url=teacher_base_url,
+        teacher_api_key=teacher_api_key,
+        teacher_model=teacher_model
     )
 
 if __name__ == "__main__":

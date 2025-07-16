@@ -63,6 +63,67 @@ class Teacher:
         
         return "\n".join(formatted)
 
+
+class ShellTeacher:
+    """Handles interaction with the teacher language model."""
+    
+    def __init__(self, base_url: str | None = "https://api.deepseek.com", api_key: str | None = os.environ.get("DEEPSEEK_API_KEY"), model: str | None = "deepseek-chat"):
+        self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.model = model
+
+    def get_next_step(self, task, trajectory):
+        """Constructs a prompt and gets the next thought/action."""
+        
+        system_prompt = task        
+        history = self._format_history(trajectory)
+        prompt_content = f"TASK: {task}\n\nHISTORY:\n{history}\n\nProvide the next step."
+
+        messages = [
+                {"role": "system", "content": system_prompt},
+                *history
+        ]
+        print('CALLING CLIENT', messages)
+        res = self.client.chat.completions.create(
+            model=self.model, #type: ignore
+            messages=messages,
+            temperature=0.4
+        )
+        if not res:
+            raise ValueError("Received an empty response from the language model.")
+
+        thought = res.choices[0].message.content
+        if "exit 0" in thought: # type: ignore
+          return "", thought
+
+        if '#' != thought[0]: # type: ignore
+          raise Exception('Reasoning was not a comment')
+
+        messages.append({"role": "assistant", "content": thought})
+        messages.append({"role": "user", "content": ""})
+        res = self.client.chat.completions.create(
+            model=self.model, # type: ignore
+            messages=messages,
+            temperature=0.4
+        )
+        action = res.choices[0].message.content
+        
+        return thought, action
+
+    def _format_history(self, trajectory):
+        """Formats the trajectory into a string for the prompt."""
+        if not trajectory:
+            return []
+        
+        messages = []
+        for turn in trajectory:
+            messages.append({"role": "assistant", "content": turn['thought']})
+            messages.append({"role": "user", "content": ""})
+            messages.append({"role": "assistant", "content": turn["action"]})
+            messages.append({"role": "user", "content": turn["observation"]})
+        
+        return messages
+
+
 if __name__ == "__main__":
     teacher = Teacher()
     teacher.get_next_step("Create a new file called 'test.txt' and write 'Hello, world!' to it.", [])

@@ -39,7 +39,7 @@ class Sandbox:
                 params={'stdin': 1, 'stdout': 1, 'stderr': 1, 'stream': 1}
             )
             self.socket._sock.settimeout(1)  # Set timeout for socket reads
-            self.socket._sock.send(b'stty -echo\n')
+            self.socket._sock.send(b'stty -echo\n') # Don't echo input
             time.sleep(0.1)
 
         except Exception as e:
@@ -105,7 +105,7 @@ class Sandbox:
 
         return stdout, stderr, exit_code
 
-    def read_until_marker(self, marker, timeout=10):
+    def read_until_marker(self, marker, timeout=20):
         """Reads from the socket until the specified marker is found."""
         if self.socket is None:
             raise Exception("Socket not initialized")
