@@ -20,7 +20,10 @@ async def train(model: art.TrainableModel[RunConfig]):
             initial_step=await model.get_step(),
         )
 
-        for batch, epoch, global_step, epoch_step in training_iterator:
+        for dataset_batch in training_iterator:
+            batch = dataset_batch.items
+            global_step = dataset_batch.step
+            
             if global_step % model.config.validation_frequency == 0:
                 results, score = await benchmark(
                     model, model.config.validation_num_scenarios,
@@ -54,3 +57,5 @@ if __name__ == "__main__":
         help="The key of the model to train as defined in all_experiments.py (e.g. 'run_1')",
     )
     args = parser.parse_args()
+    model = models[args.model]
+    asyncio.run(train(model))

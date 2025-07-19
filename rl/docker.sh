@@ -17,4 +17,5 @@ apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docke
 
 echo "Installed successfully. Starting service and doing test run..."
 service docker start
-docker run hello-world
+sleep 2
+docker build -f Dockerfile -t shellm-sandbox:latest .

@@ -14,6 +14,7 @@ load_dotenv()
 from project_types import Scenario, Message
 from sandbox import Sandbox
 
+LOCAL = True
 MAX_TURNS = 30 # reasoning counts as 1 turn 
 BASE_URL = "http://rearden:8000/v1"
 API_KEY = "MEOW"
@@ -100,6 +101,7 @@ class ProjectTrajectory(art.Trajectory):
 
 
 async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
+  client = model.openai_client() if LOCAL else oai
   traj = ProjectTrajectory(
     reward=0.0,
     messages_and_choices=[],
@@ -123,7 +125,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     return code == 0
 
   for turn in range(MAX_TURNS):
-    response = await oai.chat.completions.create(
+    response = await client.chat.completions.create(
       messages=traj.messages(),
       model=model.name,
     )

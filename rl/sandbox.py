@@ -92,13 +92,42 @@ class Sandbox:
             except asyncio.TimeoutError:
                 break
         return drained.decode('utf-8', errors='replace')
+    
+    async def read_file_via_exec(self, file_path: str) -> bytes:
+      if self.container is None:
+        raise Exception("Stream not initialized")
+      exec_obj = await self.container.exec(
+      cmd=f"cat {file_path}",
+        stdout=True,
+        stderr=True,
+        stdin=False  # Explicitly no stdin needed for cat
+      )
+      stream = exec_obj.start(detach=False)
+      content_bytes = b''
+      stderr_bytes = b''  # Collect any errors separately if needed
+      while True:
+        output = await stream.read_out()
+        if output is None:
+          break
+        if output.stream == 1:  # Stdout
+          content_bytes += output.data
+        elif output.stream == 2:  # Stderr
+          stderr_bytes += output.data
+      inspect_data = await exec_obj.inspect()
+      exit_code = inspect_data['ExitCode']
+      if exit_code != 0:
+        raise RuntimeError(
+          f"Failed to read {file_path}, exit code {exit_code}, "
+          f"stderr: {stderr_bytes.decode('utf-8', errors='replace')}"
+        )
+      return content_bytes
+
 
     async def execute_command(self, command: str) -> Tuple[str, str, int]:
         """Async executes a command in the persistent shell session."""
         if not self.container or not self.stream:
             raise Exception("Sandbox is not running.")
 
-        print(f"Executing command: {command}")
         self.command_id += 1
         if command.strip()[0] == "#":
           return "", "", 0
@@ -108,39 +137,21 @@ class Sandbox:
         exitcode_file = f"/tmp/exitcode_{id_}.txt"
         marker = f"COMMAND_DONE_{id_}"
 
-        grouped_command = f"{{ {command}; }}"
+        grouped_command = f"{{ {command} ; }}"
         cmd_to_send = (
-            f"{grouped_command} > {stdout_file} 2> {stderr_file};"
+            f"{grouped_command} > {stdout_file} 2> {stderr_file}; "
             f"echo $? > {exitcode_file}; echo '{marker}'\n"
         )
 
-        print(f"Sending command: {cmd_to_send}")
         await self.stream.write_in(cmd_to_send.encode('utf-8'))
 
         # Wait for completion
-        print(f"Waiting for marker: {marker}")
         await self.read_until_marker(marker)
 
         # Read files using exec
-        print(f"Reading stdout: {stdout_file}")
-        exec_obj = await self.container.exec(cmd=f"cat {stdout_file}", stdout=True, stderr=True)
-        stdout_bytes = await exec_obj.start(detach=True)  # Returns bytes (stdout)
-        inspect_data = await exec_obj.inspect()
-        if inspect_data['ExitCode'] != 0:
-            raise RuntimeError(f"Failed to read {stdout_file}, exit code {inspect_data['ExitCode']}")
-        print(f"Read stdout: {stdout_bytes.decode('utf-8')}")
-
-        exec_obj = await self.container.exec(cmd=f"cat {stderr_file}", stdout=True, stderr=True)
-        stderr_bytes = await exec_obj.start(detach=True)  # Returns bytes (stdout)
-        inspect_data = await exec_obj.inspect()
-        if inspect_data['ExitCode'] != 0:
-            raise RuntimeError(f"Failed to read {stderr_file}, exit code {inspect_data['ExitCode']}")
-
-        exec_obj = await self.container.exec(cmd=f"cat {exitcode_file}", stdout=True, stderr=True)
-        exitcode_bytes = await exec_obj.start(detach=True)  # Returns bytes (stdout)
-        inspect_data = await exec_obj.inspect()
-        if inspect_data['ExitCode'] != 0:
-            raise RuntimeError(f"Failed to read {exitcode_file}, exit code {inspect_data['ExitCode']}")
+        stdout_bytes = await self.read_file_via_exec(stdout_file)
+        stderr_bytes = await self.read_file_via_exec(stderr_file)
+        exitcode_bytes = await self.read_file_via_exec(exitcode_file)
 
         stdout = stdout_bytes.decode('utf-8') if stdout_bytes else ""
         stderr = stderr_bytes.decode('utf-8') if stderr_bytes else ""
