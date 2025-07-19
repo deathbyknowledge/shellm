@@ -28,6 +28,10 @@ dependencies = [
     "verifiers>=0.1.1",
     "datasets>=3.6.0",
     "trl>=0.19.0",
+    "aiodocker>=0.24.0",
+    "openpipe-art>=0.4.4",
+    "aiohttp>=3.12.13",
+    "json-repair>=0.47.8",
 ]
 
 [project.optional-dependencies]
