@@ -1,5 +1,5 @@
 import art
-from run_agent import run_agent_and_score
+from run_agent import ProjectTrajectory, run_agent_and_score
 from load_scenarios import load_scenarios
 from art.local import LocalBackend
 from art.utils import iterate_dataset
@@ -40,8 +40,19 @@ async def train(model: art.TrainableModel[RunConfig]):
                     )
                 )
             finished_groups = await art.gather_trajectory_groups(groups)
+
+            # Filter out corrupted trajectories from groups
+            filtered_groups = []
+            for group in finished_groups:
+                filtered_group = []
+                for traj in group:
+                    if traj.corrupted: # type: ignore
+                        continue
+                    filtered_group.append(traj)
+                filtered_groups.append(art.TrajectoryGroup(filtered_group))
+
             await model.train(
-                finished_groups,
+                filtered_groups,
                 config=art.TrainConfig(learning_rate=model.config.learning_rate),
             )
 

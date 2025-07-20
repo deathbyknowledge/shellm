@@ -7,6 +7,7 @@ from rich import print
 from typing import List, Tuple
 from dotenv import load_dotenv
 from json_repair import repair_json
+from tenacity import retry, stop_after_attempt
 
 load_dotenv()
 
@@ -40,6 +41,7 @@ Provide a concise reasoning for your decision and then the final numeric rating.
 Respond with a single JSON object containing 'reasoning' and 'rating'  keys.
 """
 
+@retry(stop=stop_after_attempt(3))
 async def judge_correctness(
   scenario: Scenario, messages: List[Message], exit_codes: List[int]
 ) -> float:
@@ -96,7 +98,7 @@ async def judge_correctness(
 class ProjectTrajectory(art.Trajectory):
   exit_codes: List[int]
   success_condition_passed: bool
-
+  corrupted: bool
 
 async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   client = model.openai_client() if LOCAL else oai
@@ -105,6 +107,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     messages_and_choices=[],
     exit_codes=[],
     success_condition_passed=False,
+    corrupted=False,
   )
 
   system_prompt = scenario.task
@@ -123,22 +126,28 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     return code == 0
 
   for turn in range(MAX_TURNS):
-    response = await client.chat.completions.create(
-      messages=traj.messages(),
-      model=model.name,
-    )
 
-    response_message = response.choices[0]
+    @retry(stop=stop_after_attempt(3))
+    async def get_response():
+      response = await client.chat.completions.create(
+        messages=traj.messages(),
+        model=model.name,
+      )
+
+      return response.choices[0]
+    
+    response_message = await get_response()
 
     traj.messages_and_choices.append(
       response_message
     )
 
-    if not response_message.message.content:
+    if not response_message.message.content or response_message.message.content is None:
       # We always expect text content. If it's missing, the model isn't
       # behaving as we want it to and we return the trajectory.
       condition_passed = await finish_traj(sandbox, scenario.success_condition)
       traj.success_condition_passed = condition_passed
+      traj.corrupted = True
       return traj
     
     cmd = response_message.message.content
@@ -171,6 +180,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
       traj.messages_and_choices.append({"role": "user", "content": output})
       traj.exit_codes.append(-1)
       traj.success_condition_passed = False
+      traj.corrupted = True
       return traj
 
   condition_passed = await finish_traj(sandbox, scenario.success_condition)
