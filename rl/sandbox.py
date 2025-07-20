@@ -4,7 +4,9 @@ import uuid
 from typing import List, Tuple
 
 import aiodocker
-import aiohttp
+
+# TODO: Maybe this should be a system service and only use a client from
+# the training process.
 
 class Sandbox:
     """Async version of Sandbox using aiodocker for Docker container management with persistent shell."""
@@ -14,11 +16,21 @@ class Sandbox:
         self.setup_commands = " && ".join(setup_commands).replace("'", "'\\''") if setup_commands else ""
         self.docker = None
         self.container = None
-        self.writer = None
-        self.reader = None
+        self.stream = None
         self.command_id = 0
         self.id = str(uuid.uuid4())  # Unique ID for reference
-    
+
+    def __del__(self):
+      try:
+        if self.docker:
+          _ = self.docker.close()
+        if self.container:
+          _ = self.container.delete(force=True)
+        if self.stream:
+          _ = self.stream.close()
+      except Exception as e:
+        print(f"Error in __del__: {e}")
+
     async def start(self):
         """Async start: Creates, starts container, runs setup, attaches streams."""
         try:
@@ -60,7 +72,7 @@ class Sandbox:
                 exit_code = inspect_data['ExitCode']
 
                 if exit_code != 0:
-                    raise Exception(f"Setup failed: {stderr_bytes.decode() if stderr_bytes else 'Unknown error'}")
+                    raise Exception(f"Setup failed: {stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else 'Unknown error'}")
 
             # Attach for persistent shell
             self.stream = self.container.attach(
@@ -73,7 +85,6 @@ class Sandbox:
             await self.stream.write_in(b'stty -echo\n')
             await self._drain_stream()
 
-            print("AsyncSandbox ready.")
         except Exception as e:
             await self.stop()
             raise e
@@ -93,37 +104,42 @@ class Sandbox:
                 break
         return drained.decode('utf-8', errors='replace')
     
-    async def read_file_via_exec(self, file_path: str) -> bytes:
+    async def exec_standalone_cmd(self, cmd: str) -> Tuple[str, str, int]:
+      """ Executes a command in the sandbox (outside the agent session). Returns the stdout, stderr, and exit code. """
       if self.container is None:
         raise Exception("Stream not initialized")
       exec_obj = await self.container.exec(
-      cmd=f"cat {file_path}",
+      cmd=cmd,
         stdout=True,
         stderr=True,
         stdin=False  # Explicitly no stdin needed for cat
       )
       stream = exec_obj.start(detach=False)
-      content_bytes = b''
-      stderr_bytes = b''  # Collect any errors separately if needed
+      stdout_bytes = b''
+      stderr_bytes = b''
       while True:
-        output = await stream.read_out()
+        output = await asyncio.wait_for(stream.read_out(), timeout=10)
         if output is None:
           break
         if output.stream == 1:  # Stdout
-          content_bytes += output.data
+          stdout_bytes += output.data
         elif output.stream == 2:  # Stderr
           stderr_bytes += output.data
       inspect_data = await exec_obj.inspect()
       exit_code = inspect_data['ExitCode']
+      return stdout_bytes.decode('utf-8', errors='replace'), stderr_bytes.decode('utf-8', errors='replace'), exit_code
+    
+    async def read_file_via_exec(self, file_path: str) -> str:
+      stdout, stderr, exit_code = await self.exec_standalone_cmd(f"cat {file_path}")
       if exit_code != 0:
         raise RuntimeError(
           f"Failed to read {file_path}, exit code {exit_code}, "
-          f"stderr: {stderr_bytes.decode('utf-8', errors='replace')}"
+          f"stderr: {stderr}"
         )
-      return content_bytes
+      return stdout
 
 
-    async def execute_command(self, command: str) -> Tuple[str, str, int]:
+    async def exec_session_cmd(self, command: str) -> Tuple[str, str, int]:
         """Async executes a command in the persistent shell session."""
         if not self.container or not self.stream:
             raise Exception("Sandbox is not running.")
@@ -153,9 +169,9 @@ class Sandbox:
         stderr_bytes = await self.read_file_via_exec(stderr_file)
         exitcode_bytes = await self.read_file_via_exec(exitcode_file)
 
-        stdout = stdout_bytes.decode('utf-8') if stdout_bytes else ""
-        stderr = stderr_bytes.decode('utf-8') if stderr_bytes else ""
-        exit_code_str = exitcode_bytes.decode('utf-8').strip() if exitcode_bytes else "0"
+        stdout = stdout_bytes if stdout_bytes else ""
+        stderr = stderr_bytes if stderr_bytes else ""
+        exit_code_str = exitcode_bytes if exitcode_bytes else "0"
 
         try:
             exit_code = int(exit_code_str)
@@ -177,7 +193,7 @@ class Sandbox:
         accumulated = ""
         start_time = time.time()
         while True:
-            output = await self.stream.read_out()
+            output = await asyncio.wait_for(self.stream.read_out(), timeout=timeout)
             if output is None:
               raise Exception("Stream closed unexpectedly")
             chunk = output.data.decode('utf-8', errors='replace') # TODO: look into errors=replace

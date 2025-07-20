@@ -27,8 +27,7 @@ judge_oai = AsyncOpenAI(base_url=JUDGE_BASE_URL, api_key=JUDGE_API_KEY)
 DEFAULT_JUDGE_PROMPT = """
 You are an expert evaluator. Your role is to determine if a task, executed in a Linux shell environment, was successfully completed based on the provided trajectory.
 The agent MUST always provide reasoning for their actions by submitting bash comments. This is mandatory and does not discount the agent's score.
-The agent must also use `exit 0` once the task is completed.
-You will be given the initial task, any setup commands that were run, and the full sequence of shell interactions, and outputs from the AI agent.
+You will be given the initial task, any setup commands that were run, and the bash history of the agent. We have included the exit codes of the commands in the history.
 
 Rate the trajectory on a scale from 1 to 5, where:
 1 = Completely incorrect. The agent made no progress or took actions completely unrelated to the task.
@@ -51,19 +50,17 @@ async def judge_correctness(
     if not messages or len(messages) < 2:
         return "No actions were taken."
 
-    formatted = []
+    formatted = ""
     if messages[0]['role'] == 'system': # type: ignore
       messages = messages[1:]
     commands = [msg['content'] for msg in messages if msg['role'] == 'assistant'] # type: ignore
     outputs = [msg['content'] for msg in messages if msg['role'] == 'user'] # type: ignore
     for (turn, command) in enumerate(commands):
-        formatted.append(f"Turn {turn}:")
-        formatted.append(f"Action:`{command}`") # type: ignore
         if "exit 0" in command:
           break
-        formatted.append(f"Exit Code: {exit_codes[turn]}")
-        formatted.append(f"Shell Output:\n---\n{outputs[turn].strip()}\n---") # type: ignore
-    return "\n".join(formatted)
+        formatted += f"$ {command}\n"
+        formatted += f"{outputs[turn].strip()}\n[EXIT_CODE = {exit_codes[turn]}]\n"
+    return formatted
 
   history = format_history(messages, exit_codes)
   setup_str = "\n".join(f"$ {cmd}" for cmd in setup_commands) if setup_commands else "None"
@@ -76,6 +73,7 @@ async def judge_correctness(
           {"role": "user", "content": prompt}
       ],
       max_tokens=2048,
+      temperature=0.0,
   )
   judge_response = json.loads(repair_json(str(judge_response.choices[0].message.content)))
   reasoning = judge_response['reasoning']
@@ -85,13 +83,13 @@ async def judge_correctness(
   if rating == 5:
       reward = 1.0
   elif rating == 4:
-      reward = 0.4
+      reward = 0.5
   elif rating == 3:
       reward = 0.0
   elif rating == 2:
-      reward = -0.2
-  elif rating == 1:
       reward = -0.5
+  elif rating == 1:
+      reward = -1.0
   print(f"Judge reward: {reward}")
   return reward
 
@@ -120,7 +118,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   await sandbox.start()
 
   async def finish_traj(sandbox: Sandbox, success_command: str) -> bool:
-    _, _, code = await sandbox.execute_command(success_command)
+    _, _, code = await sandbox.exec_standalone_cmd(success_command)
     await sandbox.stop()
     return code == 0
 
@@ -152,7 +150,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
       return traj
 
     try:
-      stdout, stderr, exit_code = await sandbox.execute_command(cmd) 
+      stdout, stderr, exit_code = await sandbox.exec_session_cmd(cmd) 
 
       output = ""
       if stdout is not None:
@@ -169,8 +167,10 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     
     except Exception as e:
       print(f"Error running command in sandbox: {e}")
-      condition_passed = await finish_traj(sandbox, scenario.success_condition)
-      traj.success_condition_passed = condition_passed
+      output = f"Error running command: {e}"
+      traj.messages_and_choices.append({"role": "user", "content": output})
+      traj.exit_codes.append(-1)
+      traj.success_condition_passed = False
       return traj
 
   condition_passed = await finish_traj(sandbox, scenario.success_condition)
@@ -209,7 +209,7 @@ async def run_agent_and_score(
   reward += check_success_command(traj.success_condition_passed)
   reward += check_format(traj.messages()) # type: ignore
   traj.reward = reward
-  return traj # type: ignore
+  return traj
 
 
 if __name__ == "__main__":
