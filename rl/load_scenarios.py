@@ -28,10 +28,11 @@ def load_scenarios(
   shuffle: bool = False,
   seed: Optional[int] = None,
 ):
+    dataset: Dataset = load_dataset(HF_REPO_ID, split="train")  # type: ignore
     if split == "test":
-        dataset = Dataset.from_list(eval)
+        dataset = dataset.select(range(100))
     else:
-        dataset: Dataset = load_dataset(HF_REPO_ID, split=split)  # type: ignore
+        dataset = dataset.select(range(100, dataset.num_rows))
 
     if shuffle or (seed is not None):
         if seed is not None:
