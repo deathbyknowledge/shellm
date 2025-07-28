@@ -3,7 +3,8 @@ from typing import List, Optional, Literal
 from datasets import load_dataset, Dataset
 import random
 
-HF_REPO_ID = "deathbyknowledge/V3-shell-format"
+# HF_REPO_ID = "deathbyknowledge/V3-shell-format"
+HF_REPO_ID = "deathbyknowledge/shellm-V3-simple-unix"
 
 eval = [
     {"prompt": [{"role": "system", "content": "The 'webapp' service stores user uploads in '/var/www/uploads'. Find all files with the '.tmp' extension and delete them, as they are no longer needed."}], "completion": [{"role": "assistant", "content": "# To find and delete all files with the '.tmp' extension in '/var/www/uploads', I will use the 'find' command to locate these files and then delete them using the '-delete' option."}, {"role": "user", "content": ""}, {"role": "assistant", "content": "find /var/www/uploads -type f -name \"*.tmp\" -delete"}, {"role": "user", "content": ""}, {"role": "assistant", "content": "exit 0"}], "id": "she_syn_t3370", "setup_commands": ["mkdir -p /var/www/uploads", "touch /var/www/uploads/file1.tmp", "touch /var/www/uploads/file2.txt"], "success_condition": "[ ! -f /var/www/uploads/file1.tmp ] && [ -f /var/www/uploads/file2.txt ]"},
@@ -28,11 +29,12 @@ def load_scenarios(
   shuffle: bool = False,
   seed: Optional[int] = None,
 ):
-    dataset: Dataset = load_dataset(HF_REPO_ID, split="train")  # type: ignore
-    if split == "test":
-        dataset = dataset.select(range(100))
+    # filter dataset to only include 5 star ratings and successful success conditions (performed by V3)
+    dataset: Dataset = load_dataset(HF_REPO_ID, split="train").filter(lambda x: x['evaluation']['rating'] == 5 and x['evaluation']['success_condition_passed'] == True)  # type: ignore
+    if split == "train":
+        dataset = dataset.select(range(0, dataset.num_rows - 100))
     else:
-        dataset = dataset.select(range(100, dataset.num_rows))
+        dataset = dataset.select(range(dataset.num_rows - 100, dataset.num_rows))
 
     if shuffle or (seed is not None):
         if seed is not None:
@@ -42,8 +44,8 @@ def load_scenarios(
 
     # Convert each row (dict) in the dataset to a Scenario object
     scenarios = [
-        Scenario(id=row['id'], task=row['prompt'][0]['content'], solution=row['completion'], # type: ignore
-                setup_commands=row['setup_commands'],success_condition=row['success_condition'], split=split)  # type: ignore
+        Scenario(id=row['dataset_id'], task=row['task'], # type: ignore
+                setup_commands=row['setup_commands'],success_condition=row['success_condition'])  # type: ignore
         for row in dataset  # type: ignore
     ]
 

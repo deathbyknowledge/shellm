@@ -1,6 +1,7 @@
 import os
 import art
 import json
+import traceback
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 from rich import print
@@ -13,9 +14,9 @@ load_dotenv()
 
 
 from project_types import Scenario, Message
-from sandbox import Sandbox
+from sandbox import Sandbox, SoSClient
 
-LOCAL = True
+LOCAL = False
 MAX_TURNS = 30 # reasoning counts as 1 turn 
 BASE_URL = "http://rearden:8000/v1"
 API_KEY = "MEOW"
@@ -24,6 +25,7 @@ JUDGE_BASE_URL = "https://api.deepseek.com"
 JUDGE_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 JUDGE_MODEL = "deepseek-chat"
 judge_oai = AsyncOpenAI(base_url=JUDGE_BASE_URL, api_key=JUDGE_API_KEY)
+sos = SoSClient(server_url="http://localhost:3000")
 
 DEFAULT_JUDGE_PROMPT = """
 You are an expert evaluator. Your role is to determine if a task, executed in a Linux shell environment, was successfully completed based on the provided trajectory.
@@ -92,19 +94,46 @@ async def judge_correctness(
       reward = -0.5
   elif rating == 1:
       reward = -1.0
-  print(f"Judge reward: {reward}")
   return reward
 
 class ProjectTrajectory(art.Trajectory):
+  task_id: str
+  sandbox_id: str
   exit_codes: List[int]
   success_condition_passed: bool
   corrupted: bool
 
+  def format_trajectory(self):
+    messages = self.messages()
+    if not messages or len(messages) < 2:
+        return "No actions were taken."
+
+    formatted = ""
+    outputs = 0
+    for msg in messages:
+        role = msg['role']
+        content = msg['content'] if 'content' in msg else "None"
+        if role == 'assistant':
+          # as command
+          formatted += f"$ {content}\n"
+        elif role == 'user':
+          # as output
+          formatted += f"{content}\n[EXIT_CODE = {self.exit_codes[outputs]}]\n"
+          outputs += 1
+        elif role == 'system':
+          # as task (should be the first message)
+          formatted += f"TASK: {content}\n\n"
+    return formatted
+
+
 async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   client = model.openai_client() if LOCAL else oai
+  sandbox_id = await sos.create_sandbox(setup_commands=scenario.setup_commands)
   traj = ProjectTrajectory(
     reward=0.0,
     messages_and_choices=[],
+    task_id=scenario.id,
+    sandbox_id=sandbox_id,
     exit_codes=[],
     success_condition_passed=False,
     corrupted=False,
@@ -117,13 +146,20 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   ]
   traj.exit_codes = []
 
-  sandbox = Sandbox(setup_commands=scenario.setup_commands)
-  await sandbox.start()
+  try:
+    await sos.start_sandbox(sandbox_id)
+  except Exception as e: 
+    print(scenario.setup_commands)
+    raise e
 
-  async def finish_traj(sandbox: Sandbox, success_command: str) -> bool:
-    _, _, code = await sandbox.exec_standalone_cmd(success_command)
-    await sandbox.stop()
-    return code == 0
+  async def finish_traj(sandbox_id: str, success_command: str) -> bool:
+    try:
+      _, _, code = await sos.exec_command(sandbox_id, success_command, standalone=True)
+    except Exception as e:
+      print(f"[ {scenario.id} ] Error running success command in sandbox: {e}")
+    finally:
+      await sos.stop_sandbox(sandbox_id)
+      return code == 0
 
   for turn in range(MAX_TURNS):
 
@@ -145,7 +181,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     if not response_message.message.content or response_message.message.content is None:
       # We always expect text content. If it's missing, the model isn't
       # behaving as we want it to and we return the trajectory.
-      condition_passed = await finish_traj(sandbox, scenario.success_condition)
+      condition_passed = await finish_traj(sandbox_id, scenario.success_condition)
       traj.success_condition_passed = condition_passed
       traj.corrupted = True
       return traj
@@ -154,12 +190,12 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   
     if "exit 0" in cmd:
       # It's over
-      condition_passed = await finish_traj(sandbox, scenario.success_condition)
+      condition_passed = await finish_traj(sandbox_id, scenario.success_condition)
       traj.success_condition_passed = condition_passed
       return traj
 
     try:
-      stdout, stderr, exit_code = await sandbox.exec_session_cmd(cmd) 
+      stdout, stderr, exit_code = await sos.exec_command(sandbox_id, cmd) 
 
       output = ""
       if stdout is not None:
@@ -176,14 +212,16 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     
     except Exception as e:
       print(f"Error running command in sandbox: {e}")
+      traceback.print_exc()
       output = f"Error running command: {e}"
       traj.messages_and_choices.append({"role": "user", "content": output})
       traj.exit_codes.append(-1)
       traj.success_condition_passed = False
+      await finish_traj(sandbox_id, scenario.success_condition)
       traj.corrupted = True
       return traj
 
-  condition_passed = await finish_traj(sandbox, scenario.success_condition)
+  condition_passed = await finish_traj(sandbox_id, scenario.success_condition)
   traj.success_condition_passed = condition_passed
   return traj
 
@@ -193,31 +231,32 @@ async def run_agent_and_score(
   traj = await run_agent(model, scenario)
   
   def check_exit_codes(exit_codes: List[int]) -> float:
-    r = sum([-0.05 for x in exit_codes if x != 0]) 
-    print(f"Exit code reward: {r}")
-    return r
+    r = sum([-0.1 for x in exit_codes if x != 0]) 
+    return -0.3 if r < -0.3 else r
 
   def check_success_command(passed: bool) -> float:
-    r = 0.2 if passed else 0.0
-    print(f"Success command reward: {r}")
+    r = 1.0 if passed else 0.0
     return r
 
   def check_format(messages: List[Message]) -> float:
-    r = sum([-0.05 for msg in messages if "<think>" in msg['content'] or "</think>" in msg['content']]) # type: ignore
-    print(f"Format reward: {r}")
-    return r
+    r = sum([-0.1 for msg in messages if "<think>" in msg['content'] or "</think>" in msg['content']]) # type: ignore
+    return -0.2 if r < -0.2 else r
     
 
   reward = 0.0
   # LLM Judge assigned reward
-  reward += await judge_correctness(
-    scenario, traj.messages(),traj.exit_codes # type: ignore
-  )
-  # Reward discounts based off how many error exit codes
-  # there were in the trajectory
-  reward += check_exit_codes(traj.exit_codes)
-  reward += check_success_command(traj.success_condition_passed)
-  reward += check_format(traj.messages()) # type: ignore
+  if not traj.corrupted:
+    try:
+      # reward += await judge_correctness(
+      #   scenario, traj.messages(),traj.exit_codes # type: ignore
+      # )
+      # Reward discounts based off how many error exit codes
+      # there were in the trajectory
+      reward += check_exit_codes(traj.exit_codes)
+      reward += check_success_command(traj.success_condition_passed)
+      reward += check_format(traj.messages()) # type: ignore
+    except Exception as e:
+      traj.corrupted = True
   traj.reward = reward
   return traj
 
@@ -229,4 +268,5 @@ if __name__ == "__main__":
   scenario = load_scenarios(limit=1)[0]
   model = art.Model(name="deathbyknowledge/Qwen3-8B-Shell-SFT", project="shell-agent-test")
   traj = asyncio.run(run_agent_and_score(model, scenario))
+  print(traj.format_trajectory())
   print(traj.reward)

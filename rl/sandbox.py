@@ -186,7 +186,7 @@ class Sandbox:
 
         return stdout, stderr, exit_code
 
-    async def read_until_marker(self, marker: str, timeout: float = 10.0):
+    async def read_until_marker(self, marker: str, timeout: float = 20.0):
         """Async reads from the reader stream until the marker is found."""
         if self.stream is None:
             raise Exception("Stream not initialized")
@@ -206,8 +206,6 @@ class Sandbox:
     async def stop(self):
         """Async stops the stream and removes the container."""
         if self.stream:
-            await self.stream.write_in(b"exit\n")
-            await asyncio.sleep(1)
             await self.stream.close()
             self.stream = None
         if self.container:
@@ -216,3 +214,123 @@ class Sandbox:
         if self.docker:
             await self.docker.close()
             self.docker = None
+
+import httpx
+import json
+
+class SoSClient:
+  def __init__(self, server_url="http://localhost:3000"):
+    self.server_url = server_url
+
+  async def create_sandbox(self, image="ubuntu:latest", setup_commands=None):
+      """
+      Creates a new sandbox.
+
+      Args:
+          image (str): The container image to use.
+          setup_commands (list): A list of commands to run after the container starts.
+          server_url (str): The base URL of the sandbox server.
+
+      Returns:
+          dict: The JSON response from the server, typically containing the new sandbox ID.
+      """
+      if setup_commands is None:
+          setup_commands = []
+      payload = {"image": image, "setup_commands": setup_commands}
+      async with httpx.AsyncClient(timeout=120) as client:
+          response = await client.post(f"{self.server_url}/sandboxes", json=payload)
+          response.raise_for_status()
+          parsed = response.json()
+          if "id" not in parsed:
+            raise Exception(f"Failed to create sandbox: {parsed}")
+          return parsed["id"]
+
+  async def list_sandboxes(self):
+      """
+      Lists all available sandboxes.
+
+      Args:
+          server_url (str): The base URL of the sandbox server.
+
+      Returns:
+          list: A list of dictionaries, each containing information about a sandbox.
+      """
+      async with httpx.AsyncClient(timeout=120) as client:
+          response = await client.get(f"{self.server_url}/sandboxes")
+          response.raise_for_status()
+          return response.json()
+
+  async def start_sandbox(self, sandbox_id):
+      """
+      Starts a specific sandbox.
+
+      Args:
+          sandbox_id (str): The ID of the sandbox to start.
+          server_url (str): The base URL of the sandbox server.
+      """
+      async with httpx.AsyncClient(timeout=120) as client:
+          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/start")
+          response.raise_for_status()
+          print(f"Sandbox {sandbox_id} started successfully.")
+
+  async def exec_command(self, sandbox_id, command, standalone=False):
+      """
+      Executes a command in a specific sandbox.
+
+      Args:
+          sandbox_id (str): The ID of the sandbox to execute the command in.
+          command (str): The command to execute.
+          server_url (str): The base URL of the sandbox server.
+
+      Returns:
+          dict: The JSON response from the server, containing stdout, stderr, and exit code.
+      """
+      payload = {"command": command, "standalone": standalone}
+      async with httpx.AsyncClient(timeout=120) as client:
+          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/exec", json=payload)
+          response.raise_for_status()
+          parsed = response.json()
+          if "stdout" not in parsed or "stderr" not in parsed or "exit_code" not in parsed:
+            raise Exception(f"Failed to execute command: {parsed}")
+          return parsed["stdout"], parsed["stderr"], parsed["exit_code"]
+
+  async def stop_sandbox(self, sandbox_id):
+      """
+      Stops and removes a specific sandbox.
+
+      Args:
+          sandbox_id (str): The ID of the sandbox to stop.
+          server_url (str): The base URL of the sandbox server.
+      """
+      async with httpx.AsyncClient(timeout=120) as client:
+          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/stop", json={'remove': False})
+          response.raise_for_status()
+          print(f"Sandbox {sandbox_id} stopped and removed.")
+
+async def main():
+    # Example workflow
+    sandbox_id = None
+    try:
+        # Create a sandbox
+        client = SoSClient(server_url="http://rearden:3000")
+        sandbox_id = await client.create_sandbox(setup_commands=["echo 'Hello, World!' > /tmp/hello.txt"])
+        print(f"Sandbox created with ID: {sandbox_id}")
+
+        # Start the sandbox
+        await client.start_sandbox(sandbox_id)
+
+        # Execute a command
+        exec_response = await client.exec_command(sandbox_id, "cat /tmp/hello.txt")
+        print("Execution result:", exec_response)
+
+        # List sandboxes
+        sandboxes = await client.list_sandboxes()
+        print("Available sandboxes:", sandboxes)
+
+    finally:
+        # Stop the sandbox
+        if sandbox_id is not None:
+            await client.stop_sandbox(sandbox_id)
+
+if __name__ == '__main__':
+    asyncio.run(main())

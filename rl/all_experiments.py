@@ -19,3 +19,8 @@ models["run_3"] = models["run_1"].model_copy(deep=True)
 models["run_3"].name = "run_3"
 models["run_3"].config.rollouts_per_group = 4
 models["run_3"].config.groups_per_step = 4
+
+models["run_4"] = models["run_1"].model_copy(deep=True)
+models["run_4"].name = "run_4"
+models["run_4"].config.rollouts_per_group = 8
+models["run_4"].config.groups_per_step = 4
