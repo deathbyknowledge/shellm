@@ -128,7 +128,7 @@ class ProjectTrajectory(art.Trajectory):
 
 async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   client = model.openai_client() if LOCAL else oai
-  sandbox_id = await sos.create_sandbox(setup_commands=scenario.setup_commands)
+  sandbox_id = await sos.create_sandbox(image="shellm-sandbox:latest", setup_commands=scenario.setup_commands)
   traj = ProjectTrajectory(
     reward=0.0,
     messages_and_choices=[],
@@ -154,7 +154,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
 
   async def finish_traj(sandbox_id: str, success_command: str) -> bool:
     try:
-      _, _, code = await sos.exec_command(sandbox_id, success_command, standalone=True)
+      _, code = await sos.exec_command(sandbox_id, success_command, standalone=True)
     except Exception as e:
       print(f"[ {scenario.id} ] Error running success command in sandbox: {e}")
     finally:
@@ -195,13 +195,7 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
       return traj
 
     try:
-      stdout, stderr, exit_code = await sos.exec_command(sandbox_id, cmd) 
-
-      output = ""
-      if stdout is not None:
-        output += stdout
-      if stderr is not None:
-        output += stderr
+      output, exit_code = await sos.exec_command(sandbox_id, cmd) 
 
       traj.messages_and_choices.append(
         {"role":"user", "content": output}
@@ -232,7 +226,7 @@ async def run_agent_and_score(
   
   def check_exit_codes(exit_codes: List[int]) -> float:
     r = sum([-0.1 for x in exit_codes if x != 0]) 
-    return -0.3 if r < -0.3 else r
+    return r
 
   def check_success_command(passed: bool) -> float:
     r = 1.0 if passed else 0.0
@@ -240,7 +234,12 @@ async def run_agent_and_score(
 
   def check_format(messages: List[Message]) -> float:
     r = sum([-0.1 for msg in messages if "<think>" in msg['content'] or "</think>" in msg['content']]) # type: ignore
-    return -0.2 if r < -0.2 else r
+    return r
+
+  def check_turns(messages: List[Message]) -> float:
+    # The less turns, the better
+    r = -0.2 if len(messages) > 15 else 0.0
+    return r
     
 
   reward = 0.0
@@ -252,9 +251,12 @@ async def run_agent_and_score(
       # )
       # Reward discounts based off how many error exit codes
       # there were in the trajectory
-      reward += check_exit_codes(traj.exit_codes)
       reward += check_success_command(traj.success_condition_passed)
-      reward += check_format(traj.messages()) # type: ignore
+      if reward > 0.0:
+        extra_reward = check_exit_codes(traj.exit_codes)
+        extra_reward += check_format(traj.messages()) # type: ignore
+        extra_reward += check_turns(traj.messages()) # type: ignore
+        reward += extra_reward if extra_reward > -0.5 else -0.5
     except Exception as e:
       traj.corrupted = True
   traj.reward = reward
@@ -266,7 +268,7 @@ if __name__ == "__main__":
   from load_scenarios import load_scenarios
 
   scenario = load_scenarios(limit=1)[0]
-  model = art.Model(name="deathbyknowledge/Qwen3-8B-Shell-SFT", project="shell-agent-test")
+  model = art.Model(name="deathbyknowledge/Qwen2.5-7B-Shell-SFT", project="shell-agent-test")
   traj = asyncio.run(run_agent_and_score(model, scenario))
   print(traj.format_trajectory())
   print(traj.reward)

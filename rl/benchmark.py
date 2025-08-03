@@ -17,7 +17,8 @@ async def benchmark(
 
 async def benchmark_all_models(num_scenarios: int) -> dict[str, float]:
     model_names = [
-        "deathbyknowledge/Qwen3-8B-Shell-SFT",
+        #"deathbyknowledge/Qwen3-8B-Shell-SFT",
+        "deathbyknowledge/Qwen2.5-7B-Shell-SFT",
     ]
 
     models = [art.Model(name=name, project="shell-agent-test") for name in model_names]
@@ -31,4 +32,4 @@ if __name__ == "__main__":
     import asyncio
     from rich import print
 
-    print(asyncio.run(benchmark_all_models(num_scenarios=20)))
+    print(asyncio.run(benchmark_all_models(num_scenarios=100)))
