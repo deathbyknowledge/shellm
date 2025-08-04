@@ -10,9 +10,8 @@ accelerate launch --config-file sft/zero3.yaml sft/shellm.py
 """
 
 # convenience function for FA2 initialization
-model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen3-8B", use_liger=False)
-dataset = load_dataset('deathbyknowledge/V3-shell-format', split='train')
-dataset = dataset.select(range(200)) # type: ignore
+model, tokenizer = vf.get_model_and_tokenizer("Qwen/Qwen2.5-14B-Instruct", use_liger=False)
+dataset = load_dataset('deathbyknowledge/qwen3-235b-shell-tasks', split='train')
 
 tok_counts = []
 for row in dataset:
@@ -31,15 +30,18 @@ print(f"Max tokens: {max(tok_counts)}")
 print(f"Mean tokens: {sum(tok_counts) / len(tok_counts)}")
 print(f"Median tokens: {sorted(tok_counts)[len(tok_counts) // 2]}")
 
+train_dataset = dataset.select(range(200))
+eval_dataset = dataset.select(range(200, len(dataset)))
+
 args = SFTConfig(
     max_length=8192,
-    output_dir="qwen3-8b-shell-sft",
+    output_dir="qwen2.5-14b-shell-sft",
     per_device_train_batch_size=8,
     gradient_accumulation_steps=1,
     gradient_checkpointing=True,
     bf16=True,
     learning_rate=2e-5,
-    num_train_epochs=2,
+    num_train_epochs=3,
     weight_decay=0.01,
     max_grad_norm=1.0,
     report_to="wandb",
@@ -49,12 +51,15 @@ args = SFTConfig(
     save_only_model=True,
     log_on_each_node=True,
     push_to_hub=True,
-    hub_model_id="Qwen3-8B-Shell-SFT",
+    hub_model_id="Qwen2.5-14B-Shell-SFT",
+    evaluation_strategy="steps",
+    eval_steps=6,
 )
 
 trainer = SFTTrainer(
     model=model,
     args=args,
-    train_dataset=dataset # type: ignore
+    train_dataset=train_dataset,
+    eval_dataset=eval_dataset,
 )
 trainer.train()

@@ -70,7 +70,8 @@ class SoSClient:
       payload = {"command": command, "standalone": standalone}
       async with httpx.AsyncClient(timeout=120) as client:
           response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/exec", json=payload)
-          response.raise_for_status()
+          if response.status_code > 400:
+            raise Exception(f"Failed to execute command `{command}`: {response.text}")
           parsed = response.json()
           if "output" not in parsed or "exit_code" not in parsed:
             raise Exception(f"Failed to execute command: {parsed}")
@@ -85,7 +86,7 @@ class SoSClient:
           server_url (str): The base URL of the sandbox server.
       """
       async with httpx.AsyncClient(timeout=120) as client:
-          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/stop", json={'remove': False})
+          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/stop", json={'remove': True})
           response.raise_for_status()
 
 async def main():

@@ -16,85 +16,13 @@ load_dotenv()
 from project_types import Scenario, Message
 from sandbox import Sandbox, SoSClient
 
-LOCAL = False
-MAX_TURNS = 30 # reasoning counts as 1 turn 
-BASE_URL = "http://rearden:8000/v1"
-API_KEY = "MEOW"
+LOCAL = os.getenv("LOCAL", "1") == "1"
+MAX_TURNS = int(os.getenv("MAX_TURNS", "30")) # reasoning counts as 1 turn 
+MAX_MODEL_TOKENS = int(os.getenv("MAX_MODEL_TOKENS", "32000"))
+BASE_URL = os.getenv("BASE_URL", "http://rearden:8000/v1")
+API_KEY = os.getenv("API_KEY", "MEOW")
 oai = AsyncOpenAI(base_url=BASE_URL, api_key=API_KEY)
-JUDGE_BASE_URL = "https://api.deepseek.com"
-JUDGE_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-JUDGE_MODEL = "deepseek-chat"
-judge_oai = AsyncOpenAI(base_url=JUDGE_BASE_URL, api_key=JUDGE_API_KEY)
 sos = SoSClient(server_url="http://localhost:3000")
-
-DEFAULT_JUDGE_PROMPT = """
-You are an expert evaluator. Your role is to determine if a task, executed in a Linux shell environment, was successfully completed based on the provided trajectory.
-The agent MUST always provide reasoning for their actions by submitting bash comments. This is mandatory and does not discount the agent's score.
-You will be given the initial task, any setup commands that were run, and the bash history of the agent. We have included the exit codes of the commands in the history.
-
-Rate the trajectory on a scale from 1 to 5, where:
-1 = Completely incorrect. The agent made no progress or took actions completely unrelated to the task.
-2 = Mostly incorrect. The agent took some initial steps that were related to the task but failed to make substantial progress or went down a wrong path.
-3 = Partially correct. The agent completed a significant portion of the task but had major errors or failed to complete all requirements.
-4 = Mostly correct. The agent successfully completed the task but took unnecessary steps, had minor, recoverable errors, or the solution was inefficient.
-5 = Perfectly correct. The agent completed the task efficiently and accurately, following best practices.
-
-Provide a concise reasoning for your decision and then the final numeric rating.
-Respond with a single JSON object containing 'reasoning' and 'rating'  keys.
-"""
-
-@retry(stop=stop_after_attempt(3))
-async def judge_correctness(
-  scenario: Scenario, messages: List[Message], exit_codes: List[int]
-) -> float:
-  task = scenario.task
-  setup_commands = scenario.setup_commands
-  def format_history(messages: List[Message], exit_codes: List[int]):
-    """Formats the trajectory into a string for the prompt."""
-    if not messages or len(messages) < 2:
-        return "No actions were taken."
-
-    formatted = ""
-    if messages[0]['role'] == 'system': # type: ignore
-      messages = messages[1:]
-    commands = [msg['content'] for msg in messages if msg['role'] == 'assistant'] # type: ignore
-    outputs = [msg['content'] for msg in messages if msg['role'] == 'user'] # type: ignore
-    for (turn, command) in enumerate(commands):
-        if "exit 0" in command:
-          break
-        formatted += f"$ {command}\n"
-        formatted += f"{outputs[turn].strip()}\n[EXIT_CODE = {exit_codes[turn]}]\n"
-    return formatted
-
-  history = format_history(messages, exit_codes)
-  setup_str = "\n".join(f"$ {cmd}" for cmd in setup_commands) if setup_commands else "None"
-
-  prompt = f"TASK: {task}\n\nSETUP COMMANDS:\n{setup_str}\n\nTRAJECTORY:\n{history}\n\nBased on the trajectory, was the task successfully completed? Provide your reasoning and rating."
-  judge_response = await judge_oai.chat.completions.create(
-      model=JUDGE_MODEL,
-      messages=[
-          {"role": "system", "content": DEFAULT_JUDGE_PROMPT},
-          {"role": "user", "content": prompt}
-      ],
-      max_tokens=2048,
-      temperature=0.0,
-  )
-  judge_response = json.loads(repair_json(str(judge_response.choices[0].message.content)))
-  reasoning = judge_response['reasoning']
-  rating = judge_response['rating']
-  reward = 0.0
-  # TODO: don't use yolo numbers
-  if rating == 5:
-      reward = 1.0
-  elif rating == 4:
-      reward = 0.5
-  elif rating == 3:
-      reward = 0.0
-  elif rating == 2:
-      reward = -0.5
-  elif rating == 1:
-      reward = -1.0
-  return reward
 
 class ProjectTrajectory(art.Trajectory):
   task_id: str
@@ -170,21 +98,25 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
         model=model.name,
       )
 
+      if not response.choices[0].message.content or response.choices[0].message.content is None:
+        raise Exception("No response from model")
+
       return response.choices[0]
     
+    approx_token_count = 0
+    for msg in traj.messages():
+      approx_token_count += (len(msg['content']) / 4)
+    if approx_token_count > MAX_MODEL_TOKENS:
+      await finish_traj(sandbox_id, scenario.success_condition)
+      traj.success_condition_passed = False
+      return traj
+
     response_message = await get_response()
 
     traj.messages_and_choices.append(
       response_message
     )
 
-    if not response_message.message.content or response_message.message.content is None:
-      # We always expect text content. If it's missing, the model isn't
-      # behaving as we want it to and we return the trajectory.
-      condition_passed = await finish_traj(sandbox_id, scenario.success_condition)
-      traj.success_condition_passed = condition_passed
-      traj.corrupted = True
-      return traj
     
     cmd = response_message.message.content
   
@@ -210,9 +142,9 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
       output = f"Error running command: {e}"
       traj.messages_and_choices.append({"role": "user", "content": output})
       traj.exit_codes.append(-1)
-      traj.success_condition_passed = False
       await finish_traj(sandbox_id, scenario.success_condition)
-      traj.corrupted = True
+      traj.success_condition_passed = False
+      traj.corrupted = False
       return traj
 
   condition_passed = await finish_traj(sandbox_id, scenario.success_condition)

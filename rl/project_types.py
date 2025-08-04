@@ -18,5 +18,5 @@ class RunConfig(BaseModel):
   validation_frequency: int = 10
   validation_num_scenarios: int = 20
   training_num_scenarios: int = 1000
-  rollouts_per_group: int = 4
-  learning_rate: float = 1.2e-5
+  rollouts_per_group: int = 8
+  learning_rate: float = 1e-5
