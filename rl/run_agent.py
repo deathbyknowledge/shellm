@@ -14,9 +14,10 @@ load_dotenv()
 
 
 from project_types import Scenario, Message
-from sandbox import Sandbox, SoSClient
+from sandbox import SoSClient
 
 LOCAL = os.getenv("LOCAL", "1") == "1"
+EPHEMERAL = os.getenv("EPHEMERAL", "1") == "1"
 MAX_TURNS = int(os.getenv("MAX_TURNS", "30")) # reasoning counts as 1 turn 
 MAX_MODEL_TOKENS = int(os.getenv("MAX_MODEL_TOKENS", "32000"))
 BASE_URL = os.getenv("BASE_URL", "http://rearden:8000/v1")
@@ -83,11 +84,12 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
   async def finish_traj(sandbox_id: str, success_command: str) -> bool:
     try:
       _, code = await sos.exec_command(sandbox_id, success_command, standalone=True)
-    except Exception as e:
-      print(f"[ {scenario.id} ] Error running success command in sandbox: {e}")
-    finally:
-      await sos.stop_sandbox(sandbox_id)
+      await sos.stop_sandbox(sandbox_id, remove=EPHEMERAL)
       return code == 0
+    except Exception as e:
+      await sos.stop_sandbox(sandbox_id, remove=EPHEMERAL)
+      print(f"[ {scenario.id} ] Error running success command in sandbox: {e}")
+      return False
 
   for turn in range(MAX_TURNS):
 
@@ -96,6 +98,11 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
       response = await client.chat.completions.create(
         messages=traj.messages(),
         model=model.name,
+        temperature=0.7,
+        top_p=0.95,
+        # extra_body={
+        #   "top_k":50,
+        # }
       )
 
       if not response.choices[0].message.content or response.choices[0].message.content is None:
@@ -116,16 +123,9 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
     traj.messages_and_choices.append(
       response_message
     )
-
     
     cmd = response_message.message.content
   
-    if "exit 0" in cmd:
-      # It's over
-      condition_passed = await finish_traj(sandbox_id, scenario.success_condition)
-      traj.success_condition_passed = condition_passed
-      return traj
-
     try:
       output, exit_code = await sos.exec_command(sandbox_id, cmd) 
 
@@ -133,8 +133,17 @@ async def run_agent(model: art.Model, scenario: Scenario) -> ProjectTrajectory:
         {"role":"user", "content": output}
       )
 
+
+      if "exit" in cmd and not cmd.startswith("#"):
+        # It's over
+        if len(cmd) > len("exit 0"):
+          print(f"Exit cmd: {cmd}")
+        break
+
       if exit_code != -1:
         traj.exit_codes.append(exit_code)
+      else:
+        print("-1 exit code detected")
     
     except Exception as e:
       print(f"Error running command in sandbox: {e}")
@@ -178,11 +187,6 @@ async def run_agent_and_score(
   # LLM Judge assigned reward
   if not traj.corrupted:
     try:
-      # reward += await judge_correctness(
-      #   scenario, traj.messages(),traj.exit_codes # type: ignore
-      # )
-      # Reward discounts based off how many error exit codes
-      # there were in the trajectory
       reward += check_success_command(traj.success_condition_passed)
       if reward > 0.0:
         extra_reward = check_exit_codes(traj.exit_codes)
@@ -200,7 +204,7 @@ if __name__ == "__main__":
   from load_scenarios import load_scenarios
 
   scenario = load_scenarios(limit=1)[0]
-  model = art.Model(name="deathbyknowledge/Qwen2.5-7B-Shell-SFT", project="shell-agent-test")
+  model = art.Model(name="deathbyknowledge/AFM-4.5B-Shell-SFT", project="shell-agent-test")
   traj = asyncio.run(run_agent_and_score(model, scenario))
   print(traj.format_trajectory())
   print(traj.reward)

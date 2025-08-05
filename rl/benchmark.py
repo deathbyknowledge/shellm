@@ -12,24 +12,26 @@ async def benchmark(
         desc=f"benchmarking {model.name}",
     )
     scores = [result.reward for result in results]
-    return results, sum(scores) / len(scores) if scores else 0
+    accuracy = sum([result.success_condition_passed for result in results])/len(results)
+    return results, sum(scores) / len(scores) if scores else 0, accuracy
 
 
 async def benchmark_all_models(num_scenarios: int) -> dict[str, float]:
     model_names = [
         #"deathbyknowledge/Qwen3-8B-Shell-SFT",
-        "deathbyknowledge/Qwen2.5-7B-Shell-SFT",
+        #"deathbyknowledge/Qwen2.5-7B-Shell-SFT",
+        "deathbyknowledge/AFM-4.5B-Shell-SFT",
     ]
 
     models = [art.Model(name=name, project="shell-agent-test") for name in model_names]
     results = await asyncio.gather(
         *[benchmark(model, num_scenarios) for model in models]
     )
-    return {model.name: score for model, (_results, score) in zip(models, results)}
+    return {model.name: {"score": score, "accuracy": accuracy} for model, (_results, score, accuracy) in zip(models, results)}
 
 
 if __name__ == "__main__":
     import asyncio
     from rich import print
 
-    print(asyncio.run(benchmark_all_models(num_scenarios=100)))
+    print(asyncio.run(benchmark_all_models(num_scenarios=20)))

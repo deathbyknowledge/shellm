@@ -1,6 +1,8 @@
 import asyncio
 import httpx
 
+TIMEOUT = 300
+
 class SoSClient:
   def __init__(self, server_url="http://localhost:3000"):
     self.server_url = server_url
@@ -20,7 +22,7 @@ class SoSClient:
       if setup_commands is None:
           setup_commands = []
       payload = {"image": image, "setup_commands": setup_commands}
-      async with httpx.AsyncClient(timeout=120) as client:
+      async with httpx.AsyncClient(timeout=TIMEOUT) as client:
           response = await client.post(f"{self.server_url}/sandboxes", json=payload)
           response.raise_for_status()
           parsed = response.json()
@@ -38,7 +40,7 @@ class SoSClient:
       Returns:
           list: A list of dictionaries, each containing information about a sandbox.
       """
-      async with httpx.AsyncClient(timeout=120) as client:
+      async with httpx.AsyncClient(timeout=TIMEOUT) as client:
           response = await client.get(f"{self.server_url}/sandboxes")
           response.raise_for_status()
           return response.json()
@@ -51,7 +53,7 @@ class SoSClient:
           sandbox_id (str): The ID of the sandbox to start.
           server_url (str): The base URL of the sandbox server.
       """
-      async with httpx.AsyncClient(timeout=120) as client:
+      async with httpx.AsyncClient(timeout=TIMEOUT) as client:
           response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/start")
           response.raise_for_status()
 
@@ -68,7 +70,7 @@ class SoSClient:
           dict: The JSON response from the server, containing stdout, stderr, and exit code.
       """
       payload = {"command": command, "standalone": standalone}
-      async with httpx.AsyncClient(timeout=120) as client:
+      async with httpx.AsyncClient(timeout=TIMEOUT) as client:
           response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/exec", json=payload)
           if response.status_code > 400:
             raise Exception(f"Failed to execute command `{command}`: {response.text}")
@@ -77,7 +79,7 @@ class SoSClient:
             raise Exception(f"Failed to execute command: {parsed}")
           return parsed["output"], parsed["exit_code"]
 
-  async def stop_sandbox(self, sandbox_id):
+  async def stop_sandbox(self, sandbox_id, remove=True):
       """
       Stops and removes a specific sandbox.
 
@@ -85,8 +87,8 @@ class SoSClient:
           sandbox_id (str): The ID of the sandbox to stop.
           server_url (str): The base URL of the sandbox server.
       """
-      async with httpx.AsyncClient(timeout=120) as client:
-          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/stop", json={'remove': True})
+      async with httpx.AsyncClient(timeout=TIMEOUT) as client:
+          response = await client.post(f"{self.server_url}/sandboxes/{sandbox_id}/stop", json={'remove': remove})
           response.raise_for_status()
 
 async def main():
